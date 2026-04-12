@@ -16,6 +16,8 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.WINDOWRESIZED:
+                board.handle_resize(event.x, event.y)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -34,7 +36,7 @@ def main():
                     if not board.handle_menu_click(event.pos):
                         if not board.handle_turn_indicator_click(event.pos):
                             board.handle_click_entering(event.pos, Player.ME)
-                elif is_right_click:  
+                elif is_right_click:
                     if not board.handle_menu_click(event.pos):
                         if not board.handle_turn_indicator_click(event.pos):
                             board.handle_click_entering(event.pos, Player.OPPONENT)

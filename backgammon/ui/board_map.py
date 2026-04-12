@@ -11,10 +11,6 @@ class BoardMap:
     MENU_BG = (240, 240, 240)
     MENU_HOVER = (200, 200, 255)
 
-    # Font sizes
-    LABEL_FONT_SIZE = 20
-    UI_FONT_SIZE = 24
-
     # Checker display
     MAX_VISIBLE_CHECKERS = 5
 
@@ -22,26 +18,34 @@ class BoardMap:
         self.width = width
         self.height = height
 
+        sx = width / 1024    # horizontal scale factor
+        sy = height / 768    # vertical scale factor
+        s = min(sx, sy)      # uniform scale factor for square/font values
+
+        # Font sizes (scale uniformly to preserve readability)
+        self.label_font_size = round(20 * s)
+        self.ui_font_size = round(24 * s)
+
         # Menu bar
-        self.menu_height = 30
-        self.menu_item_padding = 20       # horizontal padding added to text width per item
-        self.menu_item_x = 10            # x offset of first menu item
-        self.menu_item_y = 5             # y offset of item rect within menu bar
-        self.menu_text_y = 8             # y position of text within menu bar
+        self.menu_height = round(30 * sy)
+        self.menu_item_padding = round(20 * sx)       # horizontal padding added to text width per item
+        self.menu_item_x = round(10 * sx)             # x offset of first menu item
+        self.menu_item_y = round(5 * sy)              # y offset of item rect within menu bar
+        self.menu_text_y = round(8 * sy)              # y position of text within menu bar
 
         # Submenu
-        self.submenu_x = 10
-        self.submenu_width = 200
-        self.submenu_item_height = 25
-        self.submenu_text_x_offset = 5   # x padding inside submenu items
+        self.submenu_x = round(10 * sx)
+        self.submenu_width = round(200 * sx)
+        self.submenu_item_height = round(25 * sy)
+        self.submenu_text_x_offset = round(5 * sx)   # x padding inside submenu items
 
         # Board
-        self.board_margin = 50 + self.menu_height + 20
+        self.board_margin = round(70 * s) + self.menu_height   # (50 + 20) spatial margin + menu
         self.board_width = width - 2 * self.board_margin
         self.board_height = height - 2 * self.board_margin
 
         # Points and checkers
-        self.point_width = self.board_width // 14   # 12 points + bar + bear-off column
+        self.point_width = self.board_width // 14     # 12 points + bar + bear-off column
         self.point_height = self.board_height // 3
         self.checker_radius = max(self.point_width // 2 - 2, 2)
 
@@ -50,15 +54,15 @@ class BoardMap:
         self.bear_off_x = self.board_margin + 13 * self.point_width + self.point_width // 2
 
         # Turn indicator arrow
-        self.arrow_size = 40
+        self.arrow_size = round(40 * s)
         self.arrow_x = width - self.board_margin // 3
-        self.arrow_y_me = height - self.board_margin - 30
-        self.arrow_y_opponent = self.board_margin + 30
+        self.arrow_y_me = height - self.board_margin - round(30 * sy)
+        self.arrow_y_opponent = self.board_margin + round(30 * sy)
 
         # Text area
-        self.text_area_height = 30
-        self.text_area_y = height - self.board_margin + 30
-        self.text_padding = 10           # left padding inside text area
+        self.text_area_height = round(30 * sy)
+        self.text_area_y = height - self.board_margin + round(30 * sy)
+        self.text_padding = round(10 * sx)            # left padding inside text area
 
         # Point labels
-        self.label_margin = 15           # offset from board edge to label center
+        self.label_margin = round(15 * sy)            # offset from board edge to label center

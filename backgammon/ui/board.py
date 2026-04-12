@@ -17,7 +17,7 @@ class Board:
     def __init__(self, width=1024, height=768):
         pygame.init()
         self.map = BoardMap(width, height)
-        self.screen = pygame.display.set_mode((width, height))
+        self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
         pygame.display.set_caption("Backgammon Board")
 
         # Menu state
@@ -128,7 +128,7 @@ class Board:
                 pygame.draw.circle(self.screen, self.map.BLACK, (x, checker_y), self.map.checker_radius, 2)
 
         if count > self.map.MAX_VISIBLE_CHECKERS:
-            font = pygame.font.Font(None, self.map.UI_FONT_SIZE)
+            font = pygame.font.Font(None, self.map.ui_font_size)
             text = font.render(str(count), True, self.map.BLACK)
             text_rect = text.get_rect(center=(x, y))
             self.screen.blit(text, text_rect)
@@ -202,7 +202,7 @@ class Board:
 
     def _draw_labels(self):
         """Draw point numbers and other labels."""
-        font = pygame.font.Font(None, self.map.LABEL_FONT_SIZE)
+        font = pygame.font.Font(None, self.map.label_font_size)
 
         for point in range(13, 25):
             x, _, _ = self._get_point_coordinates(point, Player.OPPONENT)
@@ -245,7 +245,7 @@ class Board:
         pygame.draw.rect(self.screen, self.map.WHITE, text_area_rect)
         pygame.draw.rect(self.screen, self.map.BLACK, text_area_rect, 2)
 
-        font = pygame.font.Font(None, self.map.UI_FONT_SIZE)
+        font = pygame.font.Font(None, self.map.ui_font_size)
         text_surface = font.render(self.display_text, True, self.map.BLACK)
 
         text_x = text_area_rect.x + self.map.text_padding
@@ -346,6 +346,12 @@ class Board:
                         else:
                             self.opponent_possible_positions.append(pos_tuple)
 
+    def handle_resize(self, width, height):
+        """Handle window resize: rebuild layout and reinitialize positions."""
+        self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+        self.map = BoardMap(width, height)
+        self._initialize_possible_positions()
+
     def quit(self):
         """Clean up pygame."""
         pygame.quit()
@@ -384,7 +390,7 @@ class Board:
         if not self.show_menu and not self.show_analyze_submenu:
             return
 
-        font = pygame.font.Font(None, self.map.UI_FONT_SIZE)
+        font = pygame.font.Font(None, self.map.ui_font_size)
 
         if self.show_menu:
             menu_rect = pygame.Rect(0, 0, self.map.width, self.map.menu_height)
@@ -420,7 +426,7 @@ class Board:
         x, y = mouse_pos
 
         if self.show_menu and y < self.map.menu_height:
-            font = pygame.font.Font(None, self.map.UI_FONT_SIZE)
+            font = pygame.font.Font(None, self.map.ui_font_size)
             x_offset = self.map.menu_item_x
             for i, item in enumerate(self.menu_items):
                 item_width = font.size(item)[0] + self.map.menu_item_padding
