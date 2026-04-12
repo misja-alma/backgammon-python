@@ -36,11 +36,6 @@ class Board:
         # Text display area
         self.display_text = ""
 
-        # Initialize possible checker positions for both players
-        self.me_possible_positions = []  # List of (point, checker_number, coordinates)
-        self.opponent_possible_positions = []  # List of (point, checker_number, coordinates)
-        self._initialize_possible_positions()
-
     def draw(self, position: Position):
         self.position = position
 
@@ -109,7 +104,7 @@ class Board:
 
     def _draw_checkers_on_point(self, point: int, count: int, player: Player):
         """Draw checkers on a specific point."""
-        x, y, is_top = self._get_point_coordinates(point, player)
+        x, y, is_top = self.map.get_point_coordinates(point, player)
 
         color = self.map.WHITE if player == Player.ME else self.map.RED
         is_selected = (self.selected_point == point and self.selected_player == player)
@@ -132,41 +127,6 @@ class Board:
             text = font.render(str(count), True, self.map.BLACK)
             text_rect = text.get_rect(center=(x, y))
             self.screen.blit(text, text_rect)
-
-    def _get_point_coordinates(self, point: int, player: Player):
-        """Get the center coordinates for a point and whether it's on top. y is the position of the first checker."""
-        if player == Player.ME:
-            # ME moves counter-clockwise from right top to right bottom
-            if point >= 13:
-                i = point - 13
-                x = self.map.board_margin + i * self.map.point_width + self.map.point_width // 2
-                if i >= 6:
-                    x += self.map.point_width
-                y = self.map.board_margin + self.map.checker_radius
-                return x, y, True
-            else:  # Bottom points (1-12)
-                i = 12 - point
-                x = self.map.board_margin + i * self.map.point_width + self.map.point_width // 2
-                if i >= 6:
-                    x += self.map.point_width
-                y = self.map.height - self.map.board_margin - self.map.checker_radius
-                return x, y, False
-        else:
-            # OPPONENT moves clockwise right bottom to right top (reverse of ME)
-            if point >= 13:
-                i = point - 13
-                x = self.map.board_margin + i * self.map.point_width + self.map.point_width // 2
-                if i >= 6:
-                    x += self.map.point_width
-                y = self.map.height - self.map.board_margin - self.map.checker_radius
-                return x, y, False
-            else:  # Top points (1-12)
-                i = 12 - point
-                x = self.map.board_margin + i * self.map.point_width + self.map.point_width // 2
-                if i >= 6:
-                    x += self.map.point_width
-                y = self.map.board_margin + self.map.checker_radius
-                return x, y, True
 
     def _draw_checkers_on_bar(self, position: Position):
         """Draw checkers on the bar."""
@@ -205,13 +165,13 @@ class Board:
         font = pygame.font.Font(None, self.map.label_font_size)
 
         for point in range(13, 25):
-            x, _, _ = self._get_point_coordinates(point, Player.OPPONENT)
+            x, _, _ = self.map.get_point_coordinates(point, Player.OPPONENT)
             text = font.render(str(point), True, self.map.BLACK)
             text_rect = text.get_rect(center=(x, self.map.board_margin - self.map.label_margin))
             self.screen.blit(text, text_rect)
 
         for point in range(1, 13):
-            x, _, _ = self._get_point_coordinates(point, Player.OPPONENT)
+            x, _, _ = self.map.get_point_coordinates(point, Player.OPPONENT)
             text = font.render(str(point), True, self.map.BLACK)
             text_rect = text.get_rect(center=(x, self.map.board_margin + self.map.board_height + self.map.label_margin))
             self.screen.blit(text, text_rect)
@@ -277,12 +237,13 @@ class Board:
         """Handle mouse click: have checkers on point for player ME until the mouse cursor."""
         x, y = mouse_pos
 
-        for point, checker_num, coordinates in (self.me_possible_positions if player == Player.ME else self.opponent_possible_positions):
+        positions = self.map.me_possible_positions if player == Player.ME else self.map.opponent_possible_positions
+        for point, checker_num, coordinates in positions:
             center_x, center_y = coordinates
             distance = ((x - center_x) ** 2 + (y - center_y) ** 2) ** 0.5
 
             if distance <= self.map.checker_radius:
-                self.adjust_checkers(point, checker_num, player)
+                self.map.adjust_checkers(self.position, point, checker_num, player)
                 self.draw(self.position)
                 return
 
@@ -302,88 +263,14 @@ class Board:
         self.selected_point = None
         self.selected_player = None
 
-    def _initialize_possible_positions(self):
-        """Initialize lists of all possible checker positions for both players."""
-        self.me_possible_positions = []
-        self.opponent_possible_positions = []
-
-        for point in range(26):
-            for player in [Player.ME, Player.OPPONENT]:
-                if point == 0:
-                    for checker_num in range(1, self.map.MAX_VISIBLE_CHECKERS + 1):
-                        if player == Player.ME:
-                            y = self.map.board_margin + self.map.checker_radius + (checker_num - 1) * self.map.checker_radius // 2
-                        else:
-                            y = self.map.height - self.map.board_margin - self.map.checker_radius - (checker_num - 1) * self.map.checker_radius // 2
-
-                        pos_tuple = (point, checker_num, (self.map.bear_off_x, y))
-                        if player == Player.ME:
-                            self.me_possible_positions.append(pos_tuple)
-                        else:
-                            self.opponent_possible_positions.append(pos_tuple)
-
-                elif point == 25:
-                    for checker_num in range(1, self.map.MAX_VISIBLE_CHECKERS + 1):
-                        if player == Player.ME:
-                            y = self.map.board_margin + self.map.point_height + self.map.checker_radius - (checker_num - 1) * self.map.checker_radius * 2
-                        else:
-                            y = self.map.height - self.map.board_margin - self.map.point_height - self.map.checker_radius + (checker_num - 1) * self.map.checker_radius * 2
-
-                        pos_tuple = (point, checker_num, (self.map.bar_x, y))
-                        if player == Player.ME:
-                            self.me_possible_positions.append(pos_tuple)
-                        else:
-                            self.opponent_possible_positions.append(pos_tuple)
-
-                elif 1 <= point <= 24:
-                    x, base_y, is_top = self._get_point_coordinates(point, player)
-                    for checker_num in range(0, self.map.MAX_VISIBLE_CHECKERS + 1):
-                        y = base_y + ((checker_num - 1) * self.map.checker_radius * 2) if is_top else base_y - ((checker_num - 1) * self.map.checker_radius * 2)
-
-                        pos_tuple = (point, checker_num, (x, y))
-                        if player == Player.ME:
-                            self.me_possible_positions.append(pos_tuple)
-                        else:
-                            self.opponent_possible_positions.append(pos_tuple)
-
     def handle_resize(self, width, height):
         """Handle window resize: rebuild layout and reinitialize positions."""
         self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
         self.map = BoardMap(width, height)
-        self._initialize_possible_positions()
 
     def quit(self):
         """Clean up pygame."""
         pygame.quit()
-
-    def adjust_checkers(self, point, checker_num, player):
-        """Adjusts the number of checkers on the point to checker_num."""
-        current = self.position.get_checkers(player, point)
-
-        if point > 0 and current != checker_num:
-            other_player = player.other_player()
-            other_point = 25 - point
-
-            if point != 25 and self.position.get_checkers(other_player, other_point) > 0:
-                other_checkers_on_point = self.position.get_checkers(other_player, other_point)
-                current_off = self.position.get_checkers(other_player, 0)
-
-                self.position.set_checkers(other_player, 0, current_off + other_checkers_on_point)
-                self.position.set_checkers(other_player, other_point, 0)
-
-            if checker_num > current:
-                diff = checker_num - current
-                available = self.position.get_checkers(player, 0)
-                new_checkers = min(diff, available)
-                new_checkers_off = available - new_checkers
-
-                self.position.set_checkers(player, point, current + new_checkers)
-                self.position.set_checkers(player, 0, new_checkers_off)
-            else:
-                diff = current - checker_num
-                new_checkers_off = self.position.get_checkers(player, 0) + diff
-                self.position.set_checkers(player, point, current - diff)
-                self.position.set_checkers(player, 0, new_checkers_off)
 
     def _draw_menu(self):
         """Draw the menu bar."""

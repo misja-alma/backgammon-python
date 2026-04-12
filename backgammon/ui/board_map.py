@@ -1,3 +1,6 @@
+from backgammon.game.position import Position, Player
+
+
 class BoardMap:
     # Colors
     BROWN_LIGHT = (205, 133, 63)
@@ -66,3 +69,96 @@ class BoardMap:
 
         # Point labels
         self.label_margin = round(15 * sy)            # offset from board edge to label center
+
+        # Possible checker positions for hit-testing clicks
+        self.me_possible_positions = []
+        self.opponent_possible_positions = []
+        self._initialize_possible_positions()
+
+    def get_point_coordinates(self, point: int, player: Player):
+        """Return (x, y, is_top) for the first checker slot on a point. y is the position of the first checker."""
+        if player == Player.ME:
+            if point >= 13:
+                i = point - 13
+                x = self.board_margin + i * self.point_width + self.point_width // 2
+                if i >= 6:
+                    x += self.point_width
+                return x, self.board_margin + self.checker_radius, True
+            else:
+                i = 12 - point
+                x = self.board_margin + i * self.point_width + self.point_width // 2
+                if i >= 6:
+                    x += self.point_width
+                return x, self.height - self.board_margin - self.checker_radius, False
+        else:
+            if point >= 13:
+                i = point - 13
+                x = self.board_margin + i * self.point_width + self.point_width // 2
+                if i >= 6:
+                    x += self.point_width
+                return x, self.height - self.board_margin - self.checker_radius, False
+            else:
+                i = 12 - point
+                x = self.board_margin + i * self.point_width + self.point_width // 2
+                if i >= 6:
+                    x += self.point_width
+                return x, self.board_margin + self.checker_radius, True
+
+    def _initialize_possible_positions(self):
+        """Precompute all possible checker positions for hit-testing mouse clicks."""
+        self.me_possible_positions = []
+        self.opponent_possible_positions = []
+
+        for point in range(26):
+            for player in [Player.ME, Player.OPPONENT]:
+                positions = self.me_possible_positions if player == Player.ME else self.opponent_possible_positions
+
+                if point == 0:
+                    for checker_num in range(1, self.MAX_VISIBLE_CHECKERS + 1):
+                        if player == Player.ME:
+                            y = self.board_margin + self.checker_radius + (checker_num - 1) * self.checker_radius // 2
+                        else:
+                            y = self.height - self.board_margin - self.checker_radius - (checker_num - 1) * self.checker_radius // 2
+                        positions.append((point, checker_num, (self.bear_off_x, y)))
+
+                elif point == 25:
+                    for checker_num in range(1, self.MAX_VISIBLE_CHECKERS + 1):
+                        if player == Player.ME:
+                            y = self.board_margin + self.point_height + self.checker_radius - (checker_num - 1) * self.checker_radius * 2
+                        else:
+                            y = self.height - self.board_margin - self.point_height - self.checker_radius + (checker_num - 1) * self.checker_radius * 2
+                        positions.append((point, checker_num, (self.bar_x, y)))
+
+                else:
+                    x, base_y, is_top = self.get_point_coordinates(point, player)
+                    for checker_num in range(0, self.MAX_VISIBLE_CHECKERS + 1):
+                        if is_top:
+                            y = base_y + (checker_num - 1) * self.checker_radius * 2
+                        else:
+                            y = base_y - (checker_num - 1) * self.checker_radius * 2
+                        positions.append((point, checker_num, (x, y)))
+
+    def adjust_checkers(self, position: Position, point: int, checker_num: int, player: Player):
+        """Adjust the number of checkers on a point to checker_num, moving excess to/from borne-off."""
+        current = position.get_checkers(player, point)
+
+        if point > 0 and current != checker_num:
+            other_player = player.other_player()
+            other_point = 25 - point
+
+            if point != 25 and position.get_checkers(other_player, other_point) > 0:
+                other_checkers_on_point = position.get_checkers(other_player, other_point)
+                current_off = position.get_checkers(other_player, 0)
+                position.set_checkers(other_player, 0, current_off + other_checkers_on_point)
+                position.set_checkers(other_player, other_point, 0)
+
+            if checker_num > current:
+                diff = checker_num - current
+                available = position.get_checkers(player, 0)
+                new_checkers = min(diff, available)
+                position.set_checkers(player, point, current + new_checkers)
+                position.set_checkers(player, 0, available - new_checkers)
+            else:
+                diff = current - checker_num
+                position.set_checkers(player, point, current - diff)
+                position.set_checkers(player, 0, position.get_checkers(player, 0) + diff)
