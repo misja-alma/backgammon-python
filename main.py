@@ -1,28 +1,17 @@
 import pygame
-from board import Board
-from backgammon_position import Position, Player
 
-# TODO move eventloop elsewhere
-# Have different modes, selectable by file menu;
-# entry mode; on checker click, fill/empty the point up to the mouse position
-# Have analysis menu option that gives winning chances
-# Create simple recursive analyser for that
+from backgammon.ui.board import Board
+from backgammon.game.position import Position, Player
+
 
 def main():
-    """Test the Board class by displaying a starting position."""
     board = Board()
     position = Position()
     position.setup_starting_position()
-    # position.set_checkers(Player.ME, 0, 5)
-    # position.set_checkers(Player.ME, 25, 2)
-    # position.set_checkers(Player.OPPONENT, 0, 5)
-    # position.set_checkers(Player.OPPONENT, 25, 2)
-    # position.set_checkers(Player.ME, 1, 6)
-    # position.set_checkers(Player.OPPONENT, 1, 6)
-    
+
     clock = pygame.time.Clock()
     running = True
-    
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -33,18 +22,26 @@ def main():
                 else:
                     board.handle_key_press(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left mouse button
+                buttons = pygame.mouse.get_pressed()
+
+                mods = pygame.key.get_mods()
+                left, _, right = buttons
+                # Workaround for Mac 'magic' mouse
+                is_right_click = (event.button == 3) or right or (mods & pygame.KMOD_CTRL)
+                is_left_click = left and not is_right_click
+
+                if is_left_click:
                     if not board.handle_menu_click(event.pos):
                         if not board.handle_turn_indicator_click(event.pos):
                             board.handle_click_entering(event.pos, Player.ME)
-                elif event.button == 3:  # Right mouse button
+                elif is_right_click:  
                     if not board.handle_menu_click(event.pos):
                         if not board.handle_turn_indicator_click(event.pos):
                             board.handle_click_entering(event.pos, Player.OPPONENT)
-        
+
         board.draw(position)
         clock.tick(60)
-    
+
     board.quit()
 
 

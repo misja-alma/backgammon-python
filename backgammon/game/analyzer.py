@@ -1,10 +1,11 @@
-from backgammon_position import Position, Player
-from utils import Utils
+from backgammon.game.position import Position, Player
+from backgammon.game.utils import Utils
 import copy
+
 
 class Analyzer:
     dice_rolls = []
-    for d1 in range(1,7):
+    for d1 in range(1, 7):
         for d2 in range(d1, 7):
             dice_rolls.append((d1, d2))
 
@@ -36,7 +37,7 @@ class Analyzer:
     # return the resulting position with highest winning chances
     @staticmethod
     def best_move(position: Position, die1: int, die2: int):
-        best = None # best move for player on roll
+        best = None  # best move for player on roll
         for half_moves in Utils.valid_possible_moves(position, die1, die2):
             move = Utils.apply_move(position, half_moves)
             pw = Analyzer.winning_chances(move, position.get_turn())
@@ -55,6 +56,3 @@ class Analyzer:
             return after_pass, pw
         else:
             return best
-
-
-

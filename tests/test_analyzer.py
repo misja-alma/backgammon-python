@@ -1,6 +1,7 @@
 import unittest
-from backgammon_position import Position, Player
-from analyzer import Analyzer
+
+from backgammon.game.position import Position, Player
+from backgammon.game.analyzer import Analyzer
 
 
 class AnalyzerTest(unittest.TestCase):
