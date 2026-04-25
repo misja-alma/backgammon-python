@@ -22,10 +22,11 @@ class Board:
 
         # Menu state
         self.show_menu = True
-        self.menu_items = ["Analyze"]
-        self.selected_menu = None
-        self.show_analyze_submenu = False
+        self.menu_items = ["Edit", "Analyze"]
+        self.active_submenu = None  # name of the currently open submenu, or None
+        self.edit_items = ["Clear Board", "Starting Position"]
         self.analyze_items = ["Show winning chances"]
+        self.item_shortcuts = {"Show winning chances": "Ctrl+A"}
 
         # Selection state
         self.position = None
@@ -47,8 +48,11 @@ class Board:
         pygame.draw.rect(self.screen, self.map.BROWN_LIGHT, board_rect)
 
         self._draw_points()
+        self._draw_bar()
+        self._draw_bear_off_line()
         self._draw_checkers(position)
         self._draw_labels()
+        self._draw_cube(position)
         self._draw_turn_indicator()
         self._draw_text_area()
         self._draw_menu()
@@ -76,6 +80,26 @@ class Board:
             self._draw_triangle(x, self.map.board_margin + 2 * self.map.point_height,
                                 self.map.point_width, self.map.point_height, color, False)
 
+    def _draw_bear_off_line(self):
+        """Draw a narrow bar separating the last point from the bear-off area."""
+        bar_rect = pygame.Rect(
+            self.map.bear_off_bar_x,
+            self.map.board_margin,
+            self.map.bear_off_bar_width,
+            self.map.board_height
+        )
+        pygame.draw.rect(self.screen, self.map.BORDER, bar_rect)
+
+    def _draw_bar(self):
+        """Draw the bar in the middle of the board."""
+        bar_rect = pygame.Rect(
+            self.map.board_margin + 6 * self.map.point_width,
+            self.map.board_margin,
+            self.map.point_width,
+            self.map.board_height
+        )
+        pygame.draw.rect(self.screen, self.map.BORDER, bar_rect)
+
     def _draw_triangle(self, x, y, width, height, color, pointing_down):
         """Draw a triangular point."""
         if pointing_down:
@@ -90,7 +114,7 @@ class Board:
         """Draw checkers on the board according to the position."""
         self.checker_positions = []
 
-        for point in range(1, 25):
+        for point in range(1, 26):
             white_count = position.get_checkers(Player.ME, point)
             black_count = position.get_checkers(Player.OPPONENT, point)
 
@@ -99,7 +123,6 @@ class Board:
             if black_count > 0:
                 self._draw_checkers_on_point(point, black_count, Player.OPPONENT)
 
-        self._draw_checkers_on_bar(position)
         self._draw_checkers_borne_off(position)
 
     def _draw_checkers_on_point(self, point: int, count: int, player: Player):
@@ -123,27 +146,12 @@ class Board:
                 pygame.draw.circle(self.screen, self.map.BLACK, (x, checker_y), self.map.checker_radius, 2)
 
         if count > self.map.MAX_VISIBLE_CHECKERS:
+            last_i = self.map.MAX_VISIBLE_CHECKERS - 1
+            last_y = y + last_i * self.map.checker_radius * 2 if is_top else y - last_i * self.map.checker_radius * 2
             font = pygame.font.Font(None, self.map.ui_font_size)
             text = font.render(str(count), True, self.map.BLACK)
-            text_rect = text.get_rect(center=(x, y))
+            text_rect = text.get_rect(center=(x, last_y))
             self.screen.blit(text, text_rect)
-
-    def _draw_checkers_on_bar(self, position: Position):
-        """Draw checkers on the bar."""
-        me_count = position.get_checkers(Player.ME, 25)
-        opponent_count = position.get_checkers(Player.OPPONENT, 25)
-
-        for i in range(me_count):
-            y = self.map.board_margin + self.map.point_height + self.map.checker_radius - i * self.map.checker_radius * 2
-            self.checker_positions.append(CheckerPosition((self.map.bar_x, y), Player.ME, 25))
-            pygame.draw.circle(self.screen, self.map.WHITE, (self.map.bar_x, y), self.map.checker_radius)
-            pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bar_x, y), self.map.checker_radius, 2)
-
-        for i in range(opponent_count):
-            y = self.map.height - self.map.board_margin - self.map.point_height - self.map.checker_radius + i * self.map.checker_radius * 2
-            self.checker_positions.append(CheckerPosition((self.map.bar_x, y), Player.OPPONENT, 25))
-            pygame.draw.circle(self.screen, self.map.RED, (self.map.bar_x, y), self.map.checker_radius)
-            pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bar_x, y), self.map.checker_radius, 2)
 
     def _draw_checkers_borne_off(self, position: Position):
         """Draw borne off checkers."""
@@ -175,6 +183,30 @@ class Board:
             text = font.render(str(point), True, self.map.BLACK)
             text_rect = text.get_rect(center=(x, self.map.board_margin + self.map.board_height + self.map.label_margin))
             self.screen.blit(text, text_rect)
+
+    def _draw_cube(self, position: Position):
+        """Draw the doubling cube on the left margin at the side of the owner."""
+        if position.cube_owner is None:
+            cube_y = self.map.cube_y_center
+            label = "64"
+        elif position.cube_owner == Player.ME:
+            cube_y = self.map.cube_y_me
+            label = str(position.cube_value)
+        else:
+            cube_y = self.map.cube_y_opponent
+            label = str(position.cube_value)
+
+        cube_size = self.map.cube_size
+        x = self.map.cube_x - cube_size // 2
+        y = cube_y - cube_size // 2
+
+        pygame.draw.rect(self.screen, self.map.WHITE, (x, y, cube_size, cube_size))
+        pygame.draw.rect(self.screen, self.map.BLACK, (x, y, cube_size, cube_size), 2)
+
+        font = pygame.font.Font(None, self.map.cube_font_size)
+        text = font.render(label, True, self.map.BLACK)
+        text_rect = text.get_rect(center=(self.map.cube_x, cube_y))
+        self.screen.blit(text, text_rect)
 
     def _draw_turn_indicator(self):
         """Draw turn indicator arrow in the right margin."""
@@ -233,9 +265,30 @@ class Board:
 
         return False
 
-    def handle_click_entering(self, mouse_pos, player):
+    def handle_click_entering(self, mouse_pos, player, is_left_click: bool):
         """Handle mouse click: have checkers on point for player ME until the mouse cursor."""
         x, y = mouse_pos
+        is_increase_click = is_left_click if player == Player.ME else not is_left_click
+
+        # Check for overflow click on the 5th slot of either player's checkers
+        for check_player in [Player.ME, Player.OPPONENT]:
+            check_positions = self.map.me_possible_positions if check_player == Player.ME else self.map.opponent_possible_positions
+            for point, checker_num, coordinates in check_positions:
+                if checker_num != self.map.MAX_VISIBLE_CHECKERS:
+                    continue
+                center_x, center_y = coordinates
+                if ((x - center_x) ** 2 + (y - center_y) ** 2) ** 0.5 > self.map.checker_radius:
+                    continue
+                count = self.position.get_checkers(check_player, point)
+                check_player_is_increase = is_left_click if check_player == Player.ME else not is_left_click
+                if check_player_is_increase and count >= self.map.MAX_VISIBLE_CHECKERS:
+                    self.map.increment_checkers(self.position, point, check_player)
+                    self.draw(self.position)
+                    return
+                if not check_player_is_increase and count > self.map.MAX_VISIBLE_CHECKERS:
+                    self.map.decrement_checkers(self.position, point, check_player)
+                    self.draw(self.position)
+                    return
 
         positions = self.map.me_possible_positions if player == Player.ME else self.map.opponent_possible_positions
         for point, checker_num, coordinates in positions:
@@ -272,41 +325,66 @@ class Board:
         """Clean up pygame."""
         pygame.quit()
 
+    def _get_submenu_width(self, items, font) -> int:
+        padding = self.map.submenu_text_x_offset * 2 + self.map.menu_item_padding
+        max_width = max(
+            font.size(item)[0] + (font.size("  " + self.item_shortcuts[item])[0] if item in self.item_shortcuts else 0)
+            for item in items
+        )
+        return max_width + padding
+
+    def _get_submenu_x(self, menu_name: str) -> int:
+        """Return the x position of the named menu item."""
+        font = pygame.font.Font(None, self.map.ui_font_size)
+        x_offset = self.map.menu_item_x
+        for item in self.menu_items:
+            item_width = font.size(item)[0] + self.map.menu_item_padding
+            if item == menu_name:
+                return x_offset
+            x_offset += item_width
+        return self.map.menu_item_x
+
     def _draw_menu(self):
         """Draw the menu bar."""
-        if not self.show_menu and not self.show_analyze_submenu:
+        if not self.show_menu:
             return
 
         font = pygame.font.Font(None, self.map.ui_font_size)
 
-        if self.show_menu:
-            menu_rect = pygame.Rect(0, 0, self.map.width, self.map.menu_height)
-            pygame.draw.rect(self.screen, self.map.MENU_BG, menu_rect)
-            pygame.draw.line(self.screen, self.map.BLACK, (0, self.map.menu_height), (self.map.width, self.map.menu_height), 1)
+        menu_rect = pygame.Rect(0, 0, self.map.width, self.map.menu_height)
+        pygame.draw.rect(self.screen, self.map.MENU_BG, menu_rect)
+        pygame.draw.line(self.screen, self.map.BLACK, (0, self.map.menu_height), (self.map.width, self.map.menu_height), 1)
 
-            x_offset = self.map.menu_item_x
-            for i, item in enumerate(self.menu_items):
-                item_width = font.size(item)[0] + self.map.menu_item_padding
-                item_rect = pygame.Rect(x_offset, self.map.menu_item_y, item_width, self.map.menu_height - 10)
+        x_offset = self.map.menu_item_x
+        for item in self.menu_items:
+            item_width = font.size(item)[0] + self.map.menu_item_padding
+            item_rect = pygame.Rect(x_offset, self.map.menu_item_y, item_width, self.map.menu_height - 10)
 
-                if self.selected_menu == i:
-                    pygame.draw.rect(self.screen, self.map.MENU_HOVER, item_rect)
+            if self.active_submenu == item:
+                pygame.draw.rect(self.screen, self.map.MENU_HOVER, item_rect)
 
-                text = font.render(item, True, self.map.BLACK)
-                self.screen.blit(text, (x_offset + self.map.menu_item_padding // 2, self.map.menu_text_y))
-                x_offset += item_width
+            text = font.render(item, True, self.map.BLACK)
+            self.screen.blit(text, (x_offset + self.map.menu_item_padding // 2, self.map.menu_text_y))
+            x_offset += item_width
 
-        if self.show_analyze_submenu:
-            submenu_y = self.map.menu_height if self.show_menu else 0
-            submenu_height = len(self.analyze_items) * self.map.submenu_item_height + 10
-            submenu_rect = pygame.Rect(self.map.submenu_x, submenu_y, self.map.submenu_width, submenu_height)
+        if self.active_submenu:
+            submenu_x = self._get_submenu_x(self.active_submenu)
+            items = self.edit_items if self.active_submenu == "Edit" else self.analyze_items
+            submenu_y = self.map.menu_height
+            submenu_width = self._get_submenu_width(items, font)
+            submenu_height = len(items) * self.map.submenu_item_height + 10
+            submenu_rect = pygame.Rect(submenu_x, submenu_y, submenu_width, submenu_height)
             pygame.draw.rect(self.screen, self.map.MENU_BG, submenu_rect)
             pygame.draw.rect(self.screen, self.map.BLACK, submenu_rect, 1)
 
-            for i, item in enumerate(self.analyze_items):
+            for i, item in enumerate(items):
                 item_y = submenu_y + 5 + i * self.map.submenu_item_height
                 text = font.render(item, True, self.map.BLACK)
-                self.screen.blit(text, (self.map.submenu_x + self.map.submenu_text_x_offset, item_y))
+                self.screen.blit(text, (submenu_x + self.map.submenu_text_x_offset, item_y))
+                if item in self.item_shortcuts:
+                    shortcut_text = font.render(self.item_shortcuts[item], True, self.map.BLACK)
+                    shortcut_x = submenu_x + submenu_width - shortcut_text.get_width() - self.map.submenu_text_x_offset
+                    self.screen.blit(shortcut_text, (shortcut_x, item_y))
 
     def handle_menu_click(self, mouse_pos):
         """Handle menu clicks."""
@@ -315,34 +393,57 @@ class Board:
         if self.show_menu and y < self.map.menu_height:
             font = pygame.font.Font(None, self.map.ui_font_size)
             x_offset = self.map.menu_item_x
-            for i, item in enumerate(self.menu_items):
+            for item in self.menu_items:
                 item_width = font.size(item)[0] + self.map.menu_item_padding
                 if x_offset <= x <= x_offset + item_width:
-                    if item == "Analyze":
-                        self.show_analyze_submenu = not self.show_analyze_submenu
+                    self.active_submenu = item if self.active_submenu != item else None
                     return True
                 x_offset += item_width
+            self.active_submenu = None
+            return False
 
-        if self.show_analyze_submenu:
-            submenu_y = self.map.menu_height if self.show_menu else 0
-            submenu_height = len(self.analyze_items) * self.map.submenu_item_height + 10
-            submenu_right = self.map.submenu_x + self.map.submenu_width
-            if self.map.submenu_x <= x <= submenu_right and submenu_y <= y <= submenu_y + submenu_height:
+        if self.active_submenu:
+            submenu_x = self._get_submenu_x(self.active_submenu)
+            items = self.edit_items if self.active_submenu == "Edit" else self.analyze_items
+            submenu_y = self.map.menu_height
+            submenu_width = self._get_submenu_width(items, pygame.font.Font(None, self.map.ui_font_size))
+            submenu_height = len(items) * self.map.submenu_item_height + 10
+            if submenu_x <= x <= submenu_x + submenu_width and submenu_y <= y <= submenu_y + submenu_height:
                 item_index = (y - submenu_y - 5) // self.map.submenu_item_height
-                if 0 <= item_index < len(self.analyze_items):
-                    if self.analyze_items[item_index] == "Show winning chances":
-                        self.analyze()
-                        self.show_analyze_submenu = False
-                    return True
+                if 0 <= item_index < len(items):
+                    self._handle_submenu_action(self.active_submenu, items[item_index])
+                    self.active_submenu = None
+                return True
+            self.active_submenu = None
 
         return False
+
+    def _handle_submenu_action(self, menu: str, item: str):
+        if menu == "Analyze" and item == "Show winning chances":
+            self.analyze()
+        elif menu == "Edit" and item == "Clear Board":
+            self.clear_board()
+        elif menu == "Edit" and item == "Starting Position":
+            self.restore_starting_position()
+
+    def clear_board(self):
+        self.position.clear()
+        self.display_text = ""
+        self.draw(self.position)
+
+    def restore_starting_position(self):
+        self.position.setup_starting_position()
+        self.display_text = ""
+        self.draw(self.position)
 
     def handle_key_press(self, key):
         """Handle key press events."""
         if key == pygame.K_F10 or (key == pygame.K_m and pygame.key.get_pressed()[pygame.K_LALT]):
             self.show_menu = not self.show_menu
             if not self.show_menu:
-                self.show_analyze_submenu = False
+                self.active_submenu = None
+        elif key == pygame.K_a and pygame.key.get_mods() & pygame.KMOD_CTRL:
+            self.analyze()
 
     def analyze(self):
         """Analyze the current position and show winning chances."""

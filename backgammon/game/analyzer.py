@@ -1,58 +1,49 @@
 from backgammon.game.position import Position, Player
-from backgammon.game.utils import Utils
-import copy
+from backgammon.game.python_analyzer import PythonAnalyzer
+import backgammon_rust
 
 
 class Analyzer:
-    dice_rolls = []
-    for d1 in range(1, 7):
-        for d2 in range(d1, 7):
-            dice_rolls.append((d1, d2))
+    """Proxy that dispatches to PythonAnalyzer or RustAnalyzer based on use_rust."""
 
-    @staticmethod
-    def find_known_pw(position: Position, player: Player):
-        if position.get_checkers(player, 0) == 15:
-            return 1.0
-        if position.get_checkers(player.other_player(), 0) == 15:
-            return 0.0
-        return None
+    use_rust: bool = True
 
-    @staticmethod
-    def winning_chances(position: Position, player: Player) -> float:
-        pw_known = Analyzer.find_known_pw(position, player)
-        if pw_known is not None:
-            return pw_known
+    @classmethod
+    def winning_chances(cls, position: Position, player: Player) -> float:
+        if cls.use_rust:
+            return backgammon_rust.winning_chances(
+                position.black_checkers,
+                position.white_checkers,
+                1 if position.get_turn() == Player.ME else 0,
+                1 if player == Player.ME else 0,
+            )
+        return PythonAnalyzer.winning_chances(position, player)
 
-        total = 0
-        for die1, die2 in Analyzer.dice_rolls:
-            _, pw = Analyzer.best_move(position, die1, die2)
-            multiplier = 2 if die1 != die2 else 1
-            total += multiplier * pw
+    @classmethod
+    def best_move(cls, position: Position, die1: int, die2: int):
+        if cls.use_rust:
+            result = backgammon_rust.best_move(
+                position.black_checkers,
+                position.white_checkers,
+                1 if position.get_turn() == Player.ME else 0,
+                die1,
+                die2,
+            )
+            if result is None:
+                return None
+            me_checkers, opp_checkers, turn, pw = result
+            new_pos = Position()
+            new_pos.black_checkers = list(me_checkers)
+            new_pos.white_checkers = list(opp_checkers)
+            new_pos.set_turn(Player.ME if turn == 1 else Player.OPPONENT)
+            return new_pos, pw
+        return PythonAnalyzer.best_move(position, die1, die2)
 
-        return total / 36 if player == position.get_turn() else 1 - total / 36
-
-    # best move for player on roll:
-    # generate all legal moves
-    # get winning chances for each for player on roll
-    # return the resulting position with highest winning chances
-    @staticmethod
-    def best_move(position: Position, die1: int, die2: int):
-        best = None  # best move for player on roll
-        for half_moves in Utils.valid_possible_moves(position, die1, die2):
-            move = Utils.apply_move(position, half_moves)
-            pw = Analyzer.winning_chances(move, position.get_turn())
-            if not best:
-                best = move, pw
-            else:
-                _, best_pw = best
-                if pw > best_pw:
-                    best = move, pw
-
-        if not best:
-            # no move, return winning chances after passing
-            after_pass = copy.deepcopy(position)
-            after_pass.switch_turn()
-            pw = Analyzer.winning_chances(after_pass, position.get_turn())
-            return after_pass, pw
-        else:
-            return best
+    @classmethod
+    def find_known_pw(cls, position: Position, player: Player):
+        if cls.use_rust:
+            pw = cls.winning_chances(position, player)
+            if pw in (0.0, 1.0):
+                return pw
+            return None
+        return PythonAnalyzer.find_known_pw(position, player)

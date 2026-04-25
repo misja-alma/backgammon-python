@@ -34,12 +34,14 @@ def main():
 
                 if is_left_click:
                     if not board.handle_menu_click(event.pos):
-                        if not board.handle_turn_indicator_click(event.pos):
-                            board.handle_click_entering(event.pos, Player.ME)
+                        if not board.map.handle_cube_click(event.pos, is_left_click=True, position=position):
+                            if not board.handle_turn_indicator_click(event.pos):
+                                board.handle_click_entering(event.pos, Player.ME, is_left_click=True)
                 elif is_right_click:
                     if not board.handle_menu_click(event.pos):
-                        if not board.handle_turn_indicator_click(event.pos):
-                            board.handle_click_entering(event.pos, Player.OPPONENT)
+                        if not board.map.handle_cube_click(event.pos, is_left_click=False, position=position):
+                            if not board.handle_turn_indicator_click(event.pos):
+                                board.handle_click_entering(event.pos, Player.OPPONENT, is_left_click=False)
 
         board.draw(position)
         clock.tick(60)

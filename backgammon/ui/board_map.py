@@ -54,7 +54,9 @@ class BoardMap:
 
         # Fixed x positions
         self.bar_x = self.board_margin + 6 * self.point_width + self.point_width // 2
-        self.bear_off_x = self.board_margin + 13 * self.point_width + self.point_width // 2
+        self.bear_off_bar_width = self.point_width // 4
+        self.bear_off_bar_x = self.board_margin + 13 * self.point_width
+        self.bear_off_x = self.board_margin + self.board_width - self.checker_radius - 1
 
         # Turn indicator arrow
         self.arrow_size = round(40 * s)
@@ -67,6 +69,14 @@ class BoardMap:
         self.text_area_y = height - self.board_margin + round(30 * sy)
         self.text_padding = round(10 * sx)            # left padding inside text area
 
+        # Doubling cube
+        self.cube_size = round(40 * s)
+        self.cube_font_size = round(28 * s)
+        self.cube_x = self.board_margin // 2
+        self.cube_y_center = height // 2
+        self.cube_y_me = self.board_margin + self.board_height - self.cube_size // 2
+        self.cube_y_opponent = self.board_margin + self.cube_size // 2
+
         # Point labels
         self.label_margin = round(15 * sy)            # offset from board edge to label center
 
@@ -77,6 +87,12 @@ class BoardMap:
 
     def get_point_coordinates(self, point: int, player: Player):
         """Return (x, y, is_top) for the first checker slot on a point. y is the position of the first checker."""
+        if point == 25:
+            if player == Player.ME:
+                return self.bar_x, self.height - self.board_margin - self.checker_radius, False
+            else:
+                return self.bar_x, self.board_margin + self.checker_radius, True
+
         if player == Player.ME:
             if point >= 13:
                 i = point - 13
@@ -121,14 +137,6 @@ class BoardMap:
                             y = self.height - self.board_margin - self.checker_radius - (checker_num - 1) * self.checker_radius // 2
                         positions.append((point, checker_num, (self.bear_off_x, y)))
 
-                elif point == 25:
-                    for checker_num in range(1, self.MAX_VISIBLE_CHECKERS + 1):
-                        if player == Player.ME:
-                            y = self.board_margin + self.point_height + self.checker_radius - (checker_num - 1) * self.checker_radius * 2
-                        else:
-                            y = self.height - self.board_margin - self.point_height - self.checker_radius + (checker_num - 1) * self.checker_radius * 2
-                        positions.append((point, checker_num, (self.bar_x, y)))
-
                 else:
                     x, base_y, is_top = self.get_point_coordinates(point, player)
                     for checker_num in range(0, self.MAX_VISIBLE_CHECKERS + 1):
@@ -137,6 +145,62 @@ class BoardMap:
                         else:
                             y = base_y - (checker_num - 1) * self.checker_radius * 2
                         positions.append((point, checker_num, (x, y)))
+
+    def cube_center_y(self, position: Position) -> int:
+        """Return the y-center of the cube given the current position."""
+        if position.cube_owner is None:
+            return self.cube_y_center
+        elif position.cube_owner == Player.ME:
+            return self.cube_y_me
+        else:
+            return self.cube_y_opponent
+
+    def handle_cube_click(self, mouse_pos, is_left_click: bool, position: Position) -> bool:
+        """Handle a click on the cube. Returns True if the cube was clicked."""
+        cube_y = self.cube_center_y(position)
+        half = self.cube_size // 2
+        x, y = mouse_pos
+        if not (self.cube_x - half <= x <= self.cube_x + half and
+                cube_y - half <= y <= cube_y + half):
+            return False
+
+        owner = position.cube_owner
+        if owner is None:
+            if is_left_click:
+                position.cube_owner = Player.ME
+            else:
+                position.cube_owner = Player.OPPONENT
+            position.cube_value = 2
+        elif owner == Player.OPPONENT:
+            if is_left_click:
+                position.cube_value //= 2
+                if position.cube_value == 1:
+                    position.cube_owner = None
+            else:
+                position.cube_value *= 2
+        elif owner == Player.ME:
+            if is_left_click:
+                position.cube_value *= 2
+            else:
+                position.cube_value //= 2
+                if position.cube_value == 1:
+                    position.cube_owner = None
+
+        return True
+
+    def increment_checkers(self, position: Position, point: int, player: Player) -> None:
+        """Add one checker to a point, taking it from the borne-off pile if available."""
+        available = position.get_checkers(player, 0)
+        if available > 0:
+            position.set_checkers(player, point, position.get_checkers(player, point) + 1)
+            position.set_checkers(player, 0, available - 1)
+
+    def decrement_checkers(self, position: Position, point: int, player: Player) -> None:
+        """Remove one checker from a point (only when count exceeds MAX_VISIBLE_CHECKERS)."""
+        count = position.get_checkers(player, point)
+        if count > self.MAX_VISIBLE_CHECKERS:
+            position.set_checkers(player, point, count - 1)
+            position.set_checkers(player, 0, position.get_checkers(player, 0) + 1)
 
     def adjust_checkers(self, position: Position, point: int, checker_num: int, player: Player):
         """Adjust the number of checkers on a point to checker_num, moving excess to/from borne-off."""

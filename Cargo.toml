@@ -3,7 +3,12 @@ name = "backgammon"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "backgammon_rust"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 itertools = "0.12"
+pyo3 = { version = "0.22", features = ["extension-module"] }
 
 [dev-dependencies]

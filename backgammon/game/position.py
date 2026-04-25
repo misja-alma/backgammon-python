@@ -65,6 +65,13 @@ class Position:
         self.cube_value *= 2
         self.cube_owner = player
 
+    def clear(self) -> None:
+        """Move all checkers for both players to point 0 (bear-off area)."""
+        for checkers in [self.white_checkers, self.black_checkers]:
+            for i in range(1, 26):
+                checkers[i] = 0
+            checkers[0] = 15
+
     def setup_starting_position(self) -> None:
         """Set up the standard backgammon starting position."""
         # Clear all positions
