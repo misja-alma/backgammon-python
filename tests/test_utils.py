@@ -137,6 +137,23 @@ class UtilsTest(unittest.TestCase):
         }
         self.assertEqual(moves, expected_moves)
 
+    def test_valid_possible_moves_bearoff(self):
+        position = Position()
+        position.set_checkers(Player.OPPONENT, 6, 1)
+        position.set_checkers(Player.ME, 2, 1)
+        position.set_checkers(Player.ME, 9, 1)
+        position.set_turn(Player.ME)
+
+        moves = Utils.valid_possible_moves(position, 4, 3)
+
+        # There is only 1 possible move that can be done in 2 different ways.
+        # No other moves because it's not allowed to take the checker on 2 off with the 3 while there is still a checker on a higher point
+        expected_moves = {
+            ((9, 5), (5, 2)),
+            ((9, 6), (6, 2))
+        }
+        self.assertEqual(moves, expected_moves)
+
 
 if __name__ == '__main__':
     unittest.main()

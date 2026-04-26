@@ -84,6 +84,9 @@ class Utils:
                 target = start - die if start != 25 else 25 - die
                 if target < 0:
                     target = 0  # Bear off
+                    # Overshoot is only legal when no checker sits on a higher home-board point
+                    if any(pos.get_checkers(player, p) > 0 for p in range(start + 1, 7)):
+                        continue
 
                 if Utils.can_move(pos, start, target):
                     found_move = True

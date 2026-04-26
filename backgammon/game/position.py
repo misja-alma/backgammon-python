@@ -30,6 +30,12 @@ class Position:
 
         self._hash: int | None = None
 
+    def __str__(self) -> str:
+        me_parts = [f"{i}:{n}" for i, n in enumerate(self.black_checkers) if n]
+        opp_parts = [f"{i}:{n}" for i, n in enumerate(self.white_checkers) if n]
+        turn = "ME" if self.turn == Player.ME else "OPP"
+        return f"Position(turn={turn}, me=[{', '.join(me_parts)}], opp=[{', '.join(opp_parts)}])"
+
     def hash_code(self) -> int:
         if self._hash is None:
             self._hash = hash((

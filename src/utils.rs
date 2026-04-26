@@ -120,6 +120,13 @@ impl Utils {
                     25 - die as usize
                 };
 
+                // Overshoot bear-off is only legal when no checker sits on a higher home-board point
+                if target == 0 && die as usize > start {
+                    if (start + 1..7).any(|p| pos.get_checkers(player, p).unwrap_or(0) > 0) {
+                        continue;
+                    }
+                }
+
                 if Utils::can_move(pos, start, target) {
                     found_move = true;
                     if let Ok(new_pos) = Utils::apply_half_move(pos, start, target, player) {
@@ -291,6 +298,25 @@ mod tests {
         for move_seq in &moves {
             assert!(move_seq.len() <= 4);
         }
+    }
+
+    #[test]
+    fn test_valid_possible_moves_bearoff_overshoot() {
+        let mut position = Position::new();
+        position.set_checkers(Player::Me, 2, 1).unwrap();
+        position.set_checkers(Player::Me, 9, 1).unwrap();
+        position.set_turn(Player::Me);
+
+        let moves = Utils::valid_possible_moves(&position, 4, 3);
+
+        // Bearing off from point 2 with die 3 is illegal while checker is on point 9
+        // Only valid moves are 9->5 then 5->2, or 9->6 then 6->2
+        let expected: HashSet<Vec<(usize, usize)>> = [
+            vec![(9, 5), (5, 2)],
+            vec![(9, 6), (6, 2)],
+        ].into_iter().collect();
+
+        assert_eq!(moves, expected);
     }
 
     #[test]
