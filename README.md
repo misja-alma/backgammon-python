@@ -29,16 +29,36 @@ Configure PyCharm to use the venv interpreter so the Rust extension is available
 
 ## Running
 
+**From PyCharm** (no Rust changes): run `main.py` directly. Make sure the project interpreter is set to `.venv/bin/python3` (see Setup above).
+
+**From the terminal** (no Rust changes):
 ```bash
-source .venv/bin/activate
-python main.py
+.venv/bin/python main.py
 ```
+
+**After changing Rust source files**, rebuild the extension first:
+```bash
+make run
+```
+This is equivalent to `make build && .venv/bin/python main.py`.
 
 ## Running tests
 
+Use `make test` to run the full test suite. This runs Rust tests, rebuilds the Python extension, then runs Python tests — in that order:
+
 ```bash
-python -m unittest discover -s tests
+make test
 ```
+
+You can also run each step individually:
+
+```bash
+make test-rust    # Rust unit tests only (cargo test)
+make build        # Rebuild the Python extension (maturin develop)
+make test-python  # Python tests only
+```
+
+> **Important:** always run `make build` (or `make test`) after changing any Rust source file, otherwise the installed Python extension will be stale and changes won't take effect.
 
 ## Controls
 

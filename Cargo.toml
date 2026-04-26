@@ -7,8 +7,11 @@ edition = "2021"
 name = "backgammon_rust"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+extension-module = ["pyo3/extension-module"]
+
 [dependencies]
 itertools = "0.12"
-pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3 = { version = "0.22", optional = true }
 
 [dev-dependencies]

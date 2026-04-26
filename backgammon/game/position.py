@@ -28,6 +28,22 @@ class Position:
         self.cube_value: int = 1
         self.cube_owner: Player = None  # None means centered, otherwise owned by a player
 
+        self._hash: int | None = None
+
+    def hash_code(self) -> int:
+        if self._hash is None:
+            self._hash = hash((
+                tuple(self.white_checkers),
+                tuple(self.black_checkers),
+                self.turn,
+                self.cube_value,
+                self.cube_owner,
+            ))
+        return self._hash
+
+    def _invalidate_hash(self) -> None:
+        self._hash = None
+
     def set_checkers(self, player: Player, point: int, count: int) -> None:
         """Set the number of checkers for a player on a specific point."""
         if not (0 <= point <= 25):
@@ -39,6 +55,7 @@ class Position:
             self.white_checkers[point] = count
         else:
             self.black_checkers[point] = count
+        self._invalidate_hash()
 
     def get_checkers(self, player: Player, point: int) -> int:
         """Get the number of checkers for a player on a specific point."""
@@ -53,17 +70,20 @@ class Position:
     def switch_turn(self) -> None:
         """Switch to the other player's turn."""
         self.turn = Player.ME if self.turn == Player.OPPONENT else Player.OPPONENT
+        self._invalidate_hash()
 
     def get_turn(self):
         return self.turn
 
     def set_turn(self, player: Player):
         self.turn = player
+        self._invalidate_hash()
 
     def double_cube(self, player: Player) -> None:
         """Double the cube value and assign ownership to the player."""
         self.cube_value *= 2
         self.cube_owner = player
+        self._invalidate_hash()
 
     def clear(self) -> None:
         """Move all checkers for both players to point 0 (bear-off area)."""
@@ -71,6 +91,7 @@ class Position:
             for i in range(1, 26):
                 checkers[i] = 0
             checkers[0] = 15
+        self._invalidate_hash()
 
     def setup_starting_position(self) -> None:
         """Set up the standard backgammon starting position."""
@@ -99,3 +120,4 @@ class Position:
         self.turn = Player.ME
         self.cube_value = 1
         self.cube_owner = None
+        self._invalidate_hash()

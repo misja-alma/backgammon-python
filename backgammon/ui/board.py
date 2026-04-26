@@ -1,8 +1,11 @@
 import pygame
 
-from backgammon.game.analyzer import Analyzer
+from backgammon.game.analyzer_proxy import AnalyzerProxy
 from backgammon.game.position import Position, Player
+from backgammon.logger import Logger
 from backgammon.ui.board_map import BoardMap
+from backgammon.ui.settings_dialog import SettingsDialog
+from backgammon.ui.text_area import TextArea
 
 
 class CheckerPosition:
@@ -25,7 +28,7 @@ class Board:
         self.menu_items = ["Edit", "Analyze"]
         self.active_submenu = None  # name of the currently open submenu, or None
         self.edit_items = ["Clear Board", "Starting Position"]
-        self.analyze_items = ["Show winning chances"]
+        self.analyze_items = ["Show winning chances", "Settings"]
         self.item_shortcuts = {"Show winning chances": "Ctrl+A"}
 
         # Selection state
@@ -34,8 +37,8 @@ class Board:
         self.selected_player = None
         self.checker_positions = []  # List of CheckerPosition objects
 
-        # Text display area
-        self.display_text = ""
+        self.text_area = TextArea(self.screen, self.map)
+        Logger.set_text_area(self.text_area)
 
     def draw(self, position: Position):
         self.position = position
@@ -54,7 +57,7 @@ class Board:
         self._draw_labels()
         self._draw_cube(position)
         self._draw_turn_indicator()
-        self._draw_text_area()
+        self.text_area.draw()
         self._draw_menu()
 
         pygame.display.flip()
@@ -77,7 +80,7 @@ class Board:
                 x += self.map.point_width
 
             color = self.map.BROWN_DARK if i % 2 == 0 else self.map.WHITE
-            self._draw_triangle(x, self.map.board_margin + 2 * self.map.point_height,
+            self._draw_triangle(x, self.map.board_margin + self.map.board_height - self.map.point_height,
                                 self.map.point_width, self.map.point_height, color, False)
 
     def _draw_bear_off_line(self):
@@ -164,7 +167,7 @@ class Board:
             pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bear_off_x, y), self.map.checker_radius, 2)
 
         for i in range(min(opponent_count, 10)):
-            y = self.map.height - self.map.board_margin - self.map.checker_radius - i * self.map.checker_radius // 2
+            y = self.map.board_margin + self.map.board_height - self.map.checker_radius - i * self.map.checker_radius // 2
             pygame.draw.circle(self.screen, self.map.RED, (self.map.bear_off_x, y), self.map.checker_radius)
             pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bear_off_x, y), self.map.checker_radius, 2)
 
@@ -229,24 +232,8 @@ class Board:
         pygame.draw.polygon(self.screen, color, points)
         pygame.draw.polygon(self.screen, self.map.BLACK, points, 2)
 
-    def _draw_text_area(self):
-        """Draw the text display area in the bottom margin."""
-        text_area_rect = pygame.Rect(self.map.board_margin, self.map.text_area_y,
-                                     self.map.board_width, self.map.text_area_height)
-
-        pygame.draw.rect(self.screen, self.map.WHITE, text_area_rect)
-        pygame.draw.rect(self.screen, self.map.BLACK, text_area_rect, 2)
-
-        font = pygame.font.Font(None, self.map.ui_font_size)
-        text_surface = font.render(self.display_text, True, self.map.BLACK)
-
-        text_x = text_area_rect.x + self.map.text_padding
-        text_y = text_area_rect.y + (self.map.text_area_height - text_surface.get_height()) // 2
-        self.screen.blit(text_surface, (text_x, text_y))
-
     def show_text(self, text: str):
-        """Set text to display in the text area."""
-        self.display_text = text
+        self.text_area.show_text(text)
         self.draw(self.position)
 
     def handle_turn_indicator_click(self, mouse_pos):
@@ -320,6 +307,8 @@ class Board:
         """Handle window resize: rebuild layout and reinitialize positions."""
         self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
         self.map = BoardMap(width, height)
+        self.text_area = TextArea(self.screen, self.map)
+        Logger.set_text_area(self.text_area)
 
     def quit(self):
         """Clean up pygame."""
@@ -421,6 +410,10 @@ class Board:
     def _handle_submenu_action(self, menu: str, item: str):
         if menu == "Analyze" and item == "Show winning chances":
             self.analyze()
+        elif menu == "Analyze" and item == "Settings":
+            self.draw(self.position)
+            board_snapshot = self.screen.copy()
+            SettingsDialog(self.screen, self.map).show(board_snapshot)
         elif menu == "Edit" and item == "Clear Board":
             self.clear_board()
         elif menu == "Edit" and item == "Starting Position":
@@ -428,12 +421,12 @@ class Board:
 
     def clear_board(self):
         self.position.clear()
-        self.display_text = ""
+        self.text_area.clear()
         self.draw(self.position)
 
     def restore_starting_position(self):
         self.position.setup_starting_position()
-        self.display_text = ""
+        self.text_area.clear()
         self.draw(self.position)
 
     def handle_key_press(self, key):
@@ -448,5 +441,5 @@ class Board:
     def analyze(self):
         """Analyze the current position and show winning chances."""
         self.show_text("Analyzing position for winning chances...")
-        pw = Analyzer.winning_chances(position=self.position, player=Player.ME)
+        pw = AnalyzerProxy.winning_chances(position=self.position, player=Player.ME)
         self.show_text(f"My winning chances: {pw}")

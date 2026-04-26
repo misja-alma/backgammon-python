@@ -1,4 +1,8 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use std::cell::Cell;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Player {
     Opponent = 0,
     Me = 1,
@@ -13,20 +17,33 @@ impl Player {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Position {
     // Arrays representing checkers for each player on points 0-25
     // Point 0: off the board (bear off), Points 1-24: board positions, Point 25: on the bar
     // Both players use same indexing: move from high numbers to low numbers, bear off to 0
     white_checkers: [u8; 26],
     black_checkers: [u8; 26],
-    
+
     // Whose turn it is
     pub turn: Player,
-    
+
     // Doubling cube state
     pub cube_value: u32,
     pub cube_owner: Option<Player>,
+
+    // Lazily computed hash over all fields; invalidated on mutation
+    hash_cache: Cell<Option<u64>>,
+}
+
+impl PartialEq for Position {
+    fn eq(&self, other: &Self) -> bool {
+        self.white_checkers == other.white_checkers
+            && self.black_checkers == other.black_checkers
+            && self.turn == other.turn
+            && self.cube_value == other.cube_value
+            && self.cube_owner == other.cube_owner
+    }
 }
 
 impl Position {
@@ -37,7 +54,27 @@ impl Position {
             turn: Player::Me,
             cube_value: 1,
             cube_owner: None,
+            hash_cache: Cell::new(None),
         }
+    }
+
+    pub fn hash_code(&self) -> u64 {
+        if let Some(h) = self.hash_cache.get() {
+            return h;
+        }
+        let mut hasher = DefaultHasher::new();
+        self.white_checkers.hash(&mut hasher);
+        self.black_checkers.hash(&mut hasher);
+        self.turn.hash(&mut hasher);
+        self.cube_value.hash(&mut hasher);
+        self.cube_owner.hash(&mut hasher);
+        let h = hasher.finish();
+        self.hash_cache.set(Some(h));
+        h
+    }
+
+    fn invalidate_hash(&self) {
+        self.hash_cache.set(None);
     }
     
     pub fn set_checkers(&mut self, player: Player, point: usize, count: u8) -> Result<(), String> {
@@ -49,6 +86,7 @@ impl Position {
             Player::Opponent => self.white_checkers[point] = count,
             Player::Me => self.black_checkers[point] = count,
         }
+        self.invalidate_hash();
         Ok(())
     }
     
@@ -65,6 +103,7 @@ impl Position {
     
     pub fn switch_turn(&mut self) {
         self.turn = self.turn.other_player();
+        self.invalidate_hash();
     }
     
     pub fn get_turn(&self) -> Player {
@@ -73,16 +112,19 @@ impl Position {
     
     pub fn set_turn(&mut self, player: Player) {
         self.turn = player;
+        self.invalidate_hash();
     }
     
     pub fn double_cube(&mut self, player: Player) {
         self.cube_value *= 2;
         self.cube_owner = Some(player);
+        self.invalidate_hash();
     }
-    
+
     pub fn set_cube(&mut self, value: u32, owner: Option<Player>) {
         self.cube_value = value;
         self.cube_owner = owner;
+        self.invalidate_hash();
     }
     
     pub fn setup_starting_position(&mut self) {
@@ -111,6 +153,7 @@ impl Position {
         self.turn = Player::Me;
         self.cube_value = 1;
         self.cube_owner = None;
+        self.invalidate_hash();
     }
 }
 

@@ -1,4 +1,6 @@
+import pygame
 from backgammon.game.position import Position, Player
+from backgammon.ui.text_area import TextArea
 
 
 class BoardMap:
@@ -45,12 +47,13 @@ class BoardMap:
         # Board
         self.board_margin = round(70 * s) + self.menu_height   # (50 + 20) spatial margin + menu
         self.board_width = width - 2 * self.board_margin
-        self.board_height = height - 2 * self.board_margin
 
-        # Points and checkers
+        # Points and checkers — sizes derived from point_width so they always fit horizontally
         self.point_width = self.board_width // 14     # 12 points + bar + bear-off column
-        self.point_height = self.board_height // 3
         self.checker_radius = max(self.point_width // 2 - 2, 2)
+        self.point_height = round(4.5 * self.checker_radius * 2)   # 4.5 checker diameters tall
+        # board_height: 5 checkers top + 1 checker gap in middle + 5 checkers bottom = 20 radii
+        self.board_height = 2 * self.point_height + self.checker_radius * 2
 
         # Fixed x positions
         self.bar_x = self.board_margin + 6 * self.point_width + self.point_width // 2
@@ -59,21 +62,25 @@ class BoardMap:
         self.bear_off_x = self.board_margin + self.board_width - self.checker_radius - 1
 
         # Turn indicator arrow
+        board_bottom = self.board_margin + self.board_height
         self.arrow_size = round(40 * s)
         self.arrow_x = width - self.board_margin // 3
-        self.arrow_y_me = height - self.board_margin - round(30 * sy)
+        self.arrow_y_me = board_bottom - round(30 * sy)
         self.arrow_y_opponent = self.board_margin + round(30 * sy)
 
         # Text area
-        self.text_area_height = round(30 * sy)
-        self.text_area_y = height - self.board_margin + round(30 * sy)
-        self.text_padding = round(10 * sx)            # left padding inside text area
+        _font = pygame.font.Font(None, self.ui_font_size)
+        self.text_line_height = _font.get_linesize()
+        self.text_area_height = self.text_line_height * TextArea.VISIBLE_LINES + round(6 * sy)
+        self.text_area_y = height - self.board_margin + round(5 * sy)
+        self.text_padding = round(10 * sx)
+        self.scrollbar_width = round(14 * sx)
 
         # Doubling cube
         self.cube_size = round(40 * s)
         self.cube_font_size = round(28 * s)
         self.cube_x = self.board_margin // 2
-        self.cube_y_center = height // 2
+        self.cube_y_center = self.board_margin + self.board_height // 2
         self.cube_y_me = self.board_margin + self.board_height - self.cube_size // 2
         self.cube_y_opponent = self.board_margin + self.cube_size // 2
 
@@ -89,7 +96,7 @@ class BoardMap:
         """Return (x, y, is_top) for the first checker slot on a point. y is the position of the first checker."""
         if point == 25:
             if player == Player.ME:
-                return self.bar_x, self.height - self.board_margin - self.checker_radius, False
+                return self.bar_x, self.board_margin + self.board_height - self.checker_radius, False
             else:
                 return self.bar_x, self.board_margin + self.checker_radius, True
 
@@ -105,14 +112,14 @@ class BoardMap:
                 x = self.board_margin + i * self.point_width + self.point_width // 2
                 if i >= 6:
                     x += self.point_width
-                return x, self.height - self.board_margin - self.checker_radius, False
+                return x, self.board_margin + self.board_height - self.checker_radius, False
         else:
             if point >= 13:
                 i = point - 13
                 x = self.board_margin + i * self.point_width + self.point_width // 2
                 if i >= 6:
                     x += self.point_width
-                return x, self.height - self.board_margin - self.checker_radius, False
+                return x, self.board_margin + self.board_height - self.checker_radius, False
             else:
                 i = 12 - point
                 x = self.board_margin + i * self.point_width + self.point_width // 2
@@ -134,7 +141,7 @@ class BoardMap:
                         if player == Player.ME:
                             y = self.board_margin + self.checker_radius + (checker_num - 1) * self.checker_radius // 2
                         else:
-                            y = self.height - self.board_margin - self.checker_radius - (checker_num - 1) * self.checker_radius // 2
+                            y = self.board_margin + self.board_height - self.checker_radius - (checker_num - 1) * self.checker_radius // 2
                         positions.append((point, checker_num, (self.bear_off_x, y)))
 
                 else:
