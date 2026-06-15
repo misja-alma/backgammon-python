@@ -14,7 +14,6 @@ use pyo3::prelude::*;
 #[cfg(feature = "extension-module")]
 use std::cell::RefCell;
 
-//use simple_position::SimplePosition;
 use fast_position::FastPosition;
 
 #[cfg(feature = "extension-module")]
@@ -28,8 +27,8 @@ thread_local! {
 pub fn build_position(me_checkers: Vec<u8>, opp_checkers: Vec<u8>, turn: u8) -> impl Position + Clone {
     let mut pos = FastPosition::new();
     for i in 0..26 {
-        pos.set_checkers(Player::Me, i, me_checkers[i]).unwrap();
-        pos.set_checkers(Player::Opponent, i, opp_checkers[i]).unwrap();
+        if me_checkers[i] > 0 { pos.set_checkers(Player::Me, i, me_checkers[i]).unwrap(); }
+        if opp_checkers[i] > 0 { pos.set_checkers(Player::Opponent, i, opp_checkers[i]).unwrap(); }
     }
     pos.set_turn(if turn == 1 { Player::Me } else { Player::Opponent });
     pos
