@@ -60,6 +60,20 @@ make test-python  # Python tests only
 
 > **Important:** always run `make build` (or `make test`) after changing any Rust source file, otherwise the installed Python extension will be stale and changes won't take effect.
 
+## Benchmarking the Rust analyzer
+
+A benchmark binary measures the performance of the Rust analyzer in isolation. It sets up a position with 2 checkers each on the 6-point for both players, clears the cache before every run, and prints the winning-chance calculation time for each run followed by the average.
+
+Run it with:
+
+```bash
+cargo run --bin benchmark --release
+```
+
+Always use `--release`; the debug build is significantly slower and not representative of production performance.
+
+To adjust the scenario, edit `src/bin/benchmark.rs` — the `max_depth` and `runs` constants control search depth and the number of iterations.
+
 ## Controls
 
 - **Left click** — place a checker for ME

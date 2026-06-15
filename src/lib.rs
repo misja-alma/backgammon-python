@@ -1,4 +1,6 @@
 pub mod position;
+pub mod simple_position;
+pub mod fast_position;
 pub mod utils;
 pub mod rust_analyzer;
 
@@ -12,6 +14,9 @@ use pyo3::prelude::*;
 #[cfg(feature = "extension-module")]
 use std::cell::RefCell;
 
+//use simple_position::SimplePosition;
+use fast_position::FastPosition;
+
 #[cfg(feature = "extension-module")]
 // A single RustAnalyzer instance per thread, persisted for the lifetime of the game so that
 // its position cache accumulates across analysis calls rather than being discarded after each one.
@@ -20,9 +25,8 @@ thread_local! {
     static ANALYZER: RefCell<RustAnalyzer> = RefCell::new(RustAnalyzer::new());
 }
 
-#[cfg(feature = "extension-module")]
-fn build_position(me_checkers: Vec<u8>, opp_checkers: Vec<u8>, turn: u8) -> Position {
-    let mut pos = Position::new();
+pub fn build_position(me_checkers: Vec<u8>, opp_checkers: Vec<u8>, turn: u8) -> impl Position + Clone {
+    let mut pos = FastPosition::new();
     for i in 0..26 {
         pos.set_checkers(Player::Me, i, me_checkers[i]).unwrap();
         pos.set_checkers(Player::Opponent, i, opp_checkers[i]).unwrap();
