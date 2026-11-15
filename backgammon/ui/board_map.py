@@ -19,6 +19,9 @@ class BoardMap:
     # Checker display
     MAX_VISIBLE_CHECKERS = 5
 
+    # Doubling cube
+    MAX_CUBE_VALUE = 64
+
     def __init__(self, width=1024, height=768):
         self.width = width
         self.height = height
@@ -45,30 +48,14 @@ class BoardMap:
         self.submenu_text_x_offset = round(5 * sx)   # x padding inside submenu items
 
         # Board
+        # board_margin is the spacing reserved around the board: above it (menu + labels), below it
+        # (labels + text area) and at its sides (cube, turn arrow).
         self.board_margin = round(70 * s) + self.menu_height   # (50 + 20) spatial margin + menu
-        self.board_width = width - 2 * self.board_margin
 
-        # Points and checkers — sizes derived from point_width so they always fit horizontally
-        self.point_width = self.board_width // 14     # 12 points + bar + bear-off column
-        self.checker_radius = max(self.point_width // 2 - 2, 2)
-        self.point_height = round(4.5 * self.checker_radius * 2)   # 4.5 checker diameters tall
-        # board_height: 5 checkers top + 1 checker gap in middle + 5 checkers bottom = 20 radii
-        self.board_height = 2 * self.point_height + self.checker_radius * 2
+        # Point labels
+        self.label_margin = round(15 * sy)            # offset from board edge to label center
 
-        # Fixed x positions
-        self.bar_x = self.board_margin + 6 * self.point_width + self.point_width // 2
-        self.bear_off_bar_width = self.point_width // 4
-        self.bear_off_bar_x = self.board_margin + 13 * self.point_width
-        self.bear_off_x = self.board_margin + self.board_width - self.checker_radius - 1
-
-        # Turn indicator arrow
-        board_bottom = self.board_margin + self.board_height
-        self.arrow_size = round(40 * s)
-        self.arrow_x = width - self.board_margin // 3
-        self.arrow_y_me = board_bottom - round(30 * sy)
-        self.arrow_y_opponent = self.board_margin + round(30 * sy)
-
-        # Text area
+        # Text area (anchored to the bottom of the window; the board is sized to end above it)
         _font = pygame.font.Font(None, self.ui_font_size)
         self.text_line_height = _font.get_linesize()
         self.text_area_height = self.text_line_height * TextArea.VISIBLE_LINES + round(6 * sy)
@@ -76,16 +63,55 @@ class BoardMap:
         self.text_padding = round(10 * sx)
         self.scrollbar_width = round(14 * sx)
 
+        # Space for the board: between the side margins horizontally, and vertically between the
+        # top margin and the point labels that sit just above the text area.
+        available_width = width - 2 * self.board_margin
+        available_height = self.text_area_y - 2 * self.label_margin - self.board_margin
+
+        # Points and checkers — all sizes derive from point_width, which is the largest value for
+        # which the board fits both horizontally and vertically. The board then keeps its own
+        # proportions whatever the window's aspect ratio.
+        # Horizontally: 12 points + bar + bear-off column = 14 point widths.
+        # Vertically: board_height ≈ 20 checker radii (see below), with radius = point_width // 2 - 2.
+        max_pw_for_width = available_width // 14
+        max_pw_for_height = 2 * (available_height // 20 + 2)
+        self.point_width = max(min(max_pw_for_width, max_pw_for_height), 1)
+        self.checker_radius = max(self.point_width // 2 - 2, 2)
+        self.point_height = round(4.5 * self.checker_radius * 2)   # 4.5 checker diameters tall
+        # board_height: 5 checkers top + 1 checker gap in middle + 5 checkers bottom = 20 radii
+        self.board_height = 2 * self.point_height + self.checker_radius * 2
+
+        if max_pw_for_width <= max_pw_for_height:
+            # Width is the constraint: fill the available width, as before.
+            self.board_width = available_width
+        else:
+            # Height is the constraint: use exactly the space the points need.
+            self.board_width = 14 * self.point_width
+
+        # Board origin: centered horizontally, directly below the top margin vertically.
+        self.board_x = (width - self.board_width) // 2
+        self.board_y = self.board_margin
+
+        # Fixed x positions
+        self.bar_x = self.board_x + 6 * self.point_width + self.point_width // 2
+        self.bear_off_bar_width = self.point_width // 4
+        self.bear_off_bar_x = self.board_x + 13 * self.point_width
+        self.bear_off_x = self.board_x + self.board_width - self.checker_radius - 1
+
+        # Turn indicator arrow
+        board_bottom = self.board_y + self.board_height
+        self.arrow_size = round(40 * s)
+        self.arrow_x = self.board_x + self.board_width + self.board_margin * 2 // 3
+        self.arrow_y_me = board_bottom - round(30 * sy)
+        self.arrow_y_opponent = self.board_y + round(30 * sy)
+
         # Doubling cube
         self.cube_size = round(40 * s)
         self.cube_font_size = round(28 * s)
-        self.cube_x = self.board_margin // 2
-        self.cube_y_center = self.board_margin + self.board_height // 2
-        self.cube_y_me = self.board_margin + self.board_height - self.cube_size // 2
-        self.cube_y_opponent = self.board_margin + self.cube_size // 2
-
-        # Point labels
-        self.label_margin = round(15 * sy)            # offset from board edge to label center
+        self.cube_x = self.board_x - self.board_margin // 2
+        self.cube_y_center = self.board_y + self.board_height // 2
+        self.cube_y_me = self.board_y + self.board_height - self.cube_size // 2
+        self.cube_y_opponent = self.board_y + self.cube_size // 2
 
         # Possible checker positions for hit-testing clicks
         self.me_possible_positions = []
@@ -96,36 +122,58 @@ class BoardMap:
         """Return (x, y, is_top) for the first checker slot on a point. y is the position of the first checker."""
         if point == 25:
             if player == Player.ME:
-                return self.bar_x, self.board_margin + self.board_height - self.checker_radius, False
+                return self.bar_x, self.board_y + self.board_height - self.checker_radius, False
             else:
-                return self.bar_x, self.board_margin + self.checker_radius, True
+                return self.bar_x, self.board_y + self.checker_radius, True
 
         if player == Player.ME:
             if point >= 13:
                 i = point - 13
-                x = self.board_margin + i * self.point_width + self.point_width // 2
+                x = self.board_x + i * self.point_width + self.point_width // 2
                 if i >= 6:
                     x += self.point_width
-                return x, self.board_margin + self.checker_radius, True
+                return x, self.board_y + self.checker_radius, True
             else:
                 i = 12 - point
-                x = self.board_margin + i * self.point_width + self.point_width // 2
+                x = self.board_x + i * self.point_width + self.point_width // 2
                 if i >= 6:
                     x += self.point_width
-                return x, self.board_margin + self.board_height - self.checker_radius, False
+                return x, self.board_y + self.board_height - self.checker_radius, False
         else:
             if point >= 13:
                 i = point - 13
-                x = self.board_margin + i * self.point_width + self.point_width // 2
+                x = self.board_x + i * self.point_width + self.point_width // 2
                 if i >= 6:
                     x += self.point_width
-                return x, self.board_margin + self.board_height - self.checker_radius, False
+                return x, self.board_y + self.board_height - self.checker_radius, False
             else:
                 i = 12 - point
-                x = self.board_margin + i * self.point_width + self.point_width // 2
+                x = self.board_x + i * self.point_width + self.point_width // 2
                 if i >= 6:
                     x += self.point_width
-                return x, self.board_margin + self.checker_radius, True
+                return x, self.board_y + self.checker_radius, True
+
+    def point_at(self, x: int, y: int, player: Player):
+        """The point under (x, y) from player's perspective: 1-24, 25 for the bar, 0 for the
+        bear-off column. None when (x, y) is outside the board."""
+        if not (self.board_y <= y <= self.board_y + self.board_height):
+            return None
+        if self.bear_off_bar_x <= x <= self.board_x + self.board_width:
+            return 0
+        column = (x - self.board_x) // self.point_width if x >= self.board_x else -1
+        if not (0 <= column < 13):
+            return None
+        if column == 6:
+            return 25
+        index = column if column < 6 else column - 1          # 0-11 from left to right
+        is_top = y < self.board_y + self.board_height // 2
+        me_point = 13 + index if is_top else 12 - index     # ME's numbering, as labelled
+        return me_point if player == Player.ME else 25 - me_point
+
+    def dice_center(self, player: Player):
+        """Where the dice are drawn: centered in the right half for ME, the left half for OPPONENT."""
+        half_offset = 3 * self.point_width if player == Player.OPPONENT else 10 * self.point_width
+        return self.board_x + half_offset, self.board_y + self.board_height // 2
 
     def _initialize_possible_positions(self):
         """Precompute all possible checker positions for hit-testing mouse clicks."""
@@ -139,9 +187,9 @@ class BoardMap:
                 if point == 0:
                     for checker_num in range(1, self.MAX_VISIBLE_CHECKERS + 1):
                         if player == Player.ME:
-                            y = self.board_margin + self.checker_radius + (checker_num - 1) * self.checker_radius // 2
+                            y = self.board_y + self.checker_radius + (checker_num - 1) * self.checker_radius // 2
                         else:
-                            y = self.board_margin + self.board_height - self.checker_radius - (checker_num - 1) * self.checker_radius // 2
+                            y = self.board_y + self.board_height - self.checker_radius - (checker_num - 1) * self.checker_radius // 2
                         positions.append((point, checker_num, (self.bear_off_x, y)))
 
                 else:
@@ -172,26 +220,17 @@ class BoardMap:
             return False
 
         owner = position.cube_owner
+        value = position.cube_value
         if owner is None:
-            if is_left_click:
-                position.cube_owner = Player.ME
-            else:
-                position.cube_owner = Player.OPPONENT
-            position.cube_value = 2
-        elif owner == Player.OPPONENT:
-            if is_left_click:
-                position.cube_value //= 2
-                if position.cube_value == 1:
-                    position.cube_owner = None
-            else:
-                position.cube_value *= 2
-        elif owner == Player.ME:
-            if is_left_click:
-                position.cube_value *= 2
-            else:
-                position.cube_value //= 2
-                if position.cube_value == 1:
-                    position.cube_owner = None
+            owner = Player.ME if is_left_click else Player.OPPONENT
+            value = 2
+        else:
+            # Clicking the owner's button doubles; the other button halves.
+            owner_click = is_left_click == (owner == Player.ME)
+            value = min(value * 2, self.MAX_CUBE_VALUE) if owner_click else value // 2
+            if value == 1:
+                owner = None
+        position.set_cube(value, owner)
 
         return True
 

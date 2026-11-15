@@ -154,6 +154,27 @@ class UtilsTest(unittest.TestCase):
         }
         self.assertEqual(moves, expected_moves)
 
+    def test_apply_half_move_hits_blot(self):
+        position = Position()
+        position.set_checkers(Player.ME, 8, 1)
+        position.set_checkers(Player.OPPONENT, 20, 1)  # ME's point 5
+
+        new_pos = Utils.apply_half_move(position, 8, 5, Player.ME)
+
+        self.assertEqual(1, new_pos.get_checkers(Player.ME, 5))
+        self.assertEqual(0, new_pos.get_checkers(Player.OPPONENT, 20))
+        self.assertEqual(1, new_pos.get_checkers(Player.OPPONENT, 25))
+
+    def test_apply_half_move_does_not_hit_when_bearing_off(self):
+        position = Position()
+        position.set_checkers(Player.ME, 2, 1)
+        position.set_checkers(Player.OPPONENT, 24, 1)
+
+        new_pos = Utils.apply_half_move(position, 2, 0, Player.ME)
+
+        self.assertEqual(1, new_pos.get_checkers(Player.OPPONENT, 24))
+        self.assertEqual(0, new_pos.get_checkers(Player.OPPONENT, 25))
+
 
 if __name__ == '__main__':
     unittest.main()

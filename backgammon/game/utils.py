@@ -49,6 +49,13 @@ class Utils:
         """Apply a die move to a position and return new position."""
         new_pos = copy.deepcopy(pos)
         new_pos.set_checkers(player, start, new_pos.get_checkers(player, start) - 1)
+        # Hit: a single opponent checker on the target point goes to the opponent's bar.
+        if 1 <= target <= 24:
+            opponent = player.other_player()
+            opponent_point = 25 - target
+            if new_pos.get_checkers(opponent, opponent_point) == 1:
+                new_pos.set_checkers(opponent, opponent_point, 0)
+                new_pos.set_checkers(opponent, 25, new_pos.get_checkers(opponent, 25) + 1)
         new_pos.set_checkers(player, target, new_pos.get_checkers(player, target) + 1)
         return new_pos
 
@@ -101,8 +108,9 @@ class Utils:
         # Use set to avoid duplicates
         all_moves_set = set()
 
-        # Try all permutations of dice
-        for dice_perm in permutations(dice):
+        # Try all distinct orderings of the dice: [d, d, d, d] has 24 permutations that are all
+        # the same, and searching each would repeat the identical search 24 times.
+        for dice_perm in set(permutations(dice)):
             find_moves_recursive(position, list(dice_perm), [], all_moves_set)
 
         return all_moves_set
@@ -131,8 +139,10 @@ class Utils:
         # For non-doubles, if only one die could be played, keep only moves using the higher die
         if die1 != die2 and max_dice_used == 1:
             higher_die = max(die1, die2)
-            highest_die_moves = {moves for moves in max_dice_moves
-                                 if any(abs(start - target) == higher_die for start, target in moves)}
+            # A move "uses the higher die" if it is legal with that die alone in this position
+            # (a bear-off with a larger die than needed is only legal in some positions).
+            playable_with_higher = Utils.possible_moves(position, [higher_die])
+            highest_die_moves = {moves for moves in max_dice_moves if moves in playable_with_higher}
 
             # If no moves with highest die, return original filtered moves
             return highest_die_moves if highest_die_moves else max_dice_moves

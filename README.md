@@ -16,8 +16,11 @@ The Rust analyzer must be compiled and installed into the venv using [maturin](h
 
 ```bash
 pip install maturin
-maturin develop
+maturin develop --release
 ```
+
+Always use `--release` (as `make build` does): without it maturin builds the Rust code
+unoptimized, which makes the engine about 8× slower.
 
 ### PyCharm
 
@@ -54,7 +57,7 @@ You can also run each step individually:
 
 ```bash
 make test-rust    # Rust unit tests only (cargo test)
-make build        # Rebuild the Python extension (maturin develop)
+make build        # Rebuild the Python extension (maturin develop --release)
 make test-python  # Python tests only
 ```
 
@@ -72,10 +75,41 @@ cargo run --bin benchmark --release
 
 Always use `--release`; the debug build is significantly slower and not representative of production performance.
 
+To compare the two Rust position representations (`SimplePosition` and `CacheFriendlyPosition`) on identical
+searches, including their memory use per cache entry:
+
+```bash
+cargo run --bin position_benchmark --release        # optional argument: cache size in MB (default 1024)
+```
+
 To adjust the scenario, edit `src/bin/benchmark.rs` — the `max_depth` and `runs` constants control search depth and the number of iterations.
 
 ## Controls
 
+Editing a position (when no game is running):
+
 - **Left click** — place a checker for ME
 - **Right click** — place a checker for OPPONENT
+- **Ctrl+A** — show the equity of the position for ME
 - **Escape** — quit
+
+Playing a game (**Play → Start…**, choose a human or an engine with its search depth for each
+player; **Play → Stop** ends the game):
+
+- **Left click** on one of your checkers, then on its destination point (or the bear-off tray on
+  the right). A checker can use both dice in one go. The move is played as soon as all dice are used.
+- **Right click** — cancel the selected checker, or undo the last step
+- **Backspace** — undo the last step
+
+**Analyze → Settings** also sets the memory for the Rust engine's cache (1 GB by default). The
+cache never grows beyond that; less memory means more recomputation in deep searches.
+
+A Rust engine vs Rust engine game with **Show game** unchecked is played entirely inside Rust for
+speed. It can't be stopped once started; the log shows the winner when it's done.
+
+Engine search depth: depth 0 uses only the evaluator, and each extra level multiplies the work
+by roughly 400 on a full board. For the Rust engine, depth 1 takes well under a millisecond per
+move and depth 2 about 25 ms (a whole Rust-vs-Rust game takes about 1 s at depth 2). Depth 3 takes
+roughly 30 s to several minutes per move (doubles are the slowest), so a game takes about an
+hour; depth 4 is impractical. The Python engine is several
+thousand times slower and only practical at depth 0 or in the endgame.

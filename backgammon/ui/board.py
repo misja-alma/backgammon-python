@@ -1,9 +1,13 @@
 import pygame
 
-from backgammon.game.analyzer_proxy import AnalyzerProxy
+from backgammon.game.analysis_worker import AnalysisWorker
+from backgammon.game.evaluator import Evaluator
 from backgammon.game.position import Position, Player
+from backgammon.game.settings import Settings
 from backgammon.logger import Logger
 from backgammon.ui.board_map import BoardMap
+from backgammon.ui.game_controller import GameController
+from backgammon.ui.play_setup_dialog import PlaySetupDialog
 from backgammon.ui.settings_dialog import SettingsDialog
 from backgammon.ui.text_area import TextArea
 
@@ -15,7 +19,6 @@ class CheckerPosition:
         self.point = point
 
 
-# TODO option to show dice roll
 class Board:
     def __init__(self, width=1024, height=768):
         pygame.init()
@@ -25,14 +28,18 @@ class Board:
 
         # Menu state
         self.show_menu = True
-        self.menu_items = ["Edit", "Analyze"]
+        self.menus = {
+            "Edit": ["Clear Board", "Starting Position"],
+            "Play": ["Start...", "Stop"],
+            "Analyze": ["Show equity", "Settings"],
+        }
+        self.menu_items = list(self.menus)
         self.active_submenu = None  # name of the currently open submenu, or None
-        self.edit_items = ["Clear Board", "Starting Position"]
-        self.analyze_items = ["Show winning chances", "Settings"]
-        self.item_shortcuts = {"Show winning chances": "Ctrl+A"}
+        self.item_shortcuts = {"Show equity": "Ctrl+A"}
 
         # Selection state
-        self.position = None
+        self.position = Position()
+        self.position.setup_starting_position()
         self.selected_point = None
         self.selected_player = None
         self.checker_positions = []  # List of CheckerPosition objects
@@ -40,13 +47,53 @@ class Board:
         self.text_area = TextArea(self.screen, self.map)
         Logger.set_text_area(self.text_area)
 
-    def draw(self, position: Position):
-        self.position = position
+        # Background work: analysis and engine moves share one worker thread
+        self.analysis_worker = AnalysisWorker()
+        self.analysis_worker.set_rust_cache_size(Settings.rust_cache_mb)
+        self._pending_analysis = None  # Future of the running analysis, or None
+        self.game_controller = GameController(self.analysis_worker)
 
-        """Draw the backgammon board with the given position."""
+    def update(self):
+        """Per-frame housekeeping on the main thread: log output, analyses and the game."""
+        self.game_controller.update()
+        game_position = self.game_controller.display_position()
+        if game_position is not None:
+            self.position = game_position
+        Logger.flush()
+
+        future = self._pending_analysis
+        if future is None or not future.done():
+            return
+        self._pending_analysis = None
+        error = future.exception()
+        if error is not None:
+            self.text_area.show_text(f"Analysis failed: {error}")
+        else:
+            equity = future.result()
+            chance = Evaluator.equity_to_winning_chance(equity)
+            self.text_area.show_text(f"Equity for ME: {equity:+.3f} (winning chance {chance:.1%})")
+
+    @property
+    def is_game_running(self) -> bool:
+        return self.game_controller.is_running
+
+    def draw(self, position: Position = None):
+        """Draw the backgammon board with the given position (default: the current one)."""
+        if position is not None:
+            self.position = position
+        position = self.position
+
+        # While a human is entering a move, highlight the selected checker.
+        controller = self.game_controller
+        if controller.is_running:
+            self.selected_point = controller.selected_point
+            self.selected_player = controller.game.current_player
+        else:
+            self.selected_point = self.selected_player = None
+
         self.screen.fill(self.map.BORDER)
 
-        board_rect = pygame.Rect(self.map.board_margin, self.map.board_margin,
+        board_rect = pygame.Rect(self.map.board_x, self.map.board_y,
                                  self.map.board_width, self.map.board_height)
         pygame.draw.rect(self.screen, self.map.BROWN_LIGHT, board_rect)
 
@@ -57,6 +104,7 @@ class Board:
         self._draw_labels()
         self._draw_cube(position)
         self._draw_turn_indicator()
+        self._draw_dice()
         self.text_area.draw()
         self._draw_menu()
 
@@ -66,28 +114,28 @@ class Board:
         """Draw the triangular points on the board."""
         # Top points (13-24)
         for i in range(12):
-            x = self.map.board_margin + i * self.map.point_width
+            x = self.map.board_x + i * self.map.point_width
             if i >= 6:  # Skip bar space
                 x += self.map.point_width
 
             color = self.map.BROWN_DARK if i % 2 == 0 else self.map.WHITE
-            self._draw_triangle(x, self.map.board_margin, self.map.point_width, self.map.point_height, color, True)
+            self._draw_triangle(x, self.map.board_y, self.map.point_width, self.map.point_height, color, True)
 
         # Bottom points (1-12)
         for i in range(12):
-            x = self.map.board_margin + (11 - i) * self.map.point_width
+            x = self.map.board_x + (11 - i) * self.map.point_width
             if i < 6:  # Skip bar space
                 x += self.map.point_width
 
             color = self.map.BROWN_DARK if i % 2 == 0 else self.map.WHITE
-            self._draw_triangle(x, self.map.board_margin + self.map.board_height - self.map.point_height,
+            self._draw_triangle(x, self.map.board_y + self.map.board_height - self.map.point_height,
                                 self.map.point_width, self.map.point_height, color, False)
 
     def _draw_bear_off_line(self):
         """Draw a narrow bar separating the last point from the bear-off area."""
         bar_rect = pygame.Rect(
             self.map.bear_off_bar_x,
-            self.map.board_margin,
+            self.map.board_y,
             self.map.bear_off_bar_width,
             self.map.board_height
         )
@@ -96,8 +144,8 @@ class Board:
     def _draw_bar(self):
         """Draw the bar in the middle of the board."""
         bar_rect = pygame.Rect(
-            self.map.board_margin + 6 * self.map.point_width,
-            self.map.board_margin,
+            self.map.board_x + 6 * self.map.point_width,
+            self.map.board_y,
             self.map.point_width,
             self.map.board_height
         )
@@ -162,12 +210,12 @@ class Board:
         opponent_count = position.get_checkers(Player.OPPONENT, 0)
 
         for i in range(min(me_count, 10)):
-            y = self.map.board_margin + self.map.checker_radius + i * self.map.checker_radius // 2
+            y = self.map.board_y + self.map.checker_radius + i * self.map.checker_radius // 2
             pygame.draw.circle(self.screen, self.map.WHITE, (self.map.bear_off_x, y), self.map.checker_radius)
             pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bear_off_x, y), self.map.checker_radius, 2)
 
         for i in range(min(opponent_count, 10)):
-            y = self.map.board_margin + self.map.board_height - self.map.checker_radius - i * self.map.checker_radius // 2
+            y = self.map.board_y + self.map.board_height - self.map.checker_radius - i * self.map.checker_radius // 2
             pygame.draw.circle(self.screen, self.map.RED, (self.map.bear_off_x, y), self.map.checker_radius)
             pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bear_off_x, y), self.map.checker_radius, 2)
 
@@ -178,13 +226,13 @@ class Board:
         for point in range(13, 25):
             x, _, _ = self.map.get_point_coordinates(point, Player.OPPONENT)
             text = font.render(str(point), True, self.map.BLACK)
-            text_rect = text.get_rect(center=(x, self.map.board_margin - self.map.label_margin))
+            text_rect = text.get_rect(center=(x, self.map.board_y - self.map.label_margin))
             self.screen.blit(text, text_rect)
 
         for point in range(1, 13):
             x, _, _ = self.map.get_point_coordinates(point, Player.OPPONENT)
             text = font.render(str(point), True, self.map.BLACK)
-            text_rect = text.get_rect(center=(x, self.map.board_margin + self.map.board_height + self.map.label_margin))
+            text_rect = text.get_rect(center=(x, self.map.board_y + self.map.board_height + self.map.label_margin))
             self.screen.blit(text, text_rect)
 
     def _draw_cube(self, position: Position):
@@ -231,6 +279,43 @@ class Board:
 
         pygame.draw.polygon(self.screen, color, points)
         pygame.draw.polygon(self.screen, self.map.BLACK, points, 2)
+
+    def _draw_dice(self):
+        """Draw the current roll on the mover's half of the board during a displayed game."""
+        controller = self.game_controller
+        if not controller.is_running or controller.is_hidden or controller.game.dice is None:
+            return
+        player = controller.game.current_player
+        die_color, pip_color = ((self.map.WHITE, self.map.BLACK) if player == Player.ME
+                                else (self.map.RED, self.map.WHITE))
+        size = round(self.map.checker_radius * 1.6)
+        center_x, center_y = self.map.dice_center(player)
+        for i, value in enumerate(controller.game.dice):
+            x = center_x + (i - 1) * (size + size // 4) + size // 8
+            rect = pygame.Rect(x, center_y - size // 2, size, size)
+            pygame.draw.rect(self.screen, die_color, rect, border_radius=size // 6)
+            pygame.draw.rect(self.screen, self.map.BLACK, rect, 2, border_radius=size // 6)
+            self._draw_pips(rect, value, pip_color)
+
+    PIP_LAYOUT = {
+        1: [(0, 0)], 2: [(-1, -1), (1, 1)], 3: [(-1, -1), (0, 0), (1, 1)],
+        4: [(-1, -1), (1, -1), (-1, 1), (1, 1)], 5: [(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)],
+        6: [(-1, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (1, 1)],
+    }
+
+    def _draw_pips(self, rect, value, color):
+        offset = rect.width // 4
+        radius = max(rect.width // 10, 2)
+        for dx, dy in self.PIP_LAYOUT[value]:
+            pygame.draw.circle(self.screen, color, (rect.centerx + dx * offset, rect.centery + dy * offset), radius)
+
+    def handle_game_click(self, mouse_pos, is_left_click: bool):
+        """A click on the board during a game: part of entering a human move."""
+        controller = self.game_controller
+        if not controller.is_human_turn:
+            return
+        point = self.map.point_at(*mouse_pos, controller.game.current_player)
+        controller.handle_click(point, is_left_click)
 
     def show_text(self, text: str):
         self.text_area.show_text(text)
@@ -358,7 +443,7 @@ class Board:
 
         if self.active_submenu:
             submenu_x = self._get_submenu_x(self.active_submenu)
-            items = self.edit_items if self.active_submenu == "Edit" else self.analyze_items
+            items = self.menus[self.active_submenu]
             submenu_y = self.map.menu_height
             submenu_width = self._get_submenu_width(items, font)
             submenu_height = len(items) * self.map.submenu_item_height + 10
@@ -368,10 +453,11 @@ class Board:
 
             for i, item in enumerate(items):
                 item_y = submenu_y + 5 + i * self.map.submenu_item_height
-                text = font.render(item, True, self.map.BLACK)
+                color = self.map.BLACK if self.is_menu_item_enabled(self.active_submenu, item) else self.MENU_DISABLED
+                text = font.render(item, True, color)
                 self.screen.blit(text, (submenu_x + self.map.submenu_text_x_offset, item_y))
                 if item in self.item_shortcuts:
-                    shortcut_text = font.render(self.item_shortcuts[item], True, self.map.BLACK)
+                    shortcut_text = font.render(self.item_shortcuts[item], True, color)
                     shortcut_x = submenu_x + submenu_width - shortcut_text.get_width() - self.map.submenu_text_x_offset
                     self.screen.blit(shortcut_text, (shortcut_x, item_y))
 
@@ -393,27 +479,49 @@ class Board:
 
         if self.active_submenu:
             submenu_x = self._get_submenu_x(self.active_submenu)
-            items = self.edit_items if self.active_submenu == "Edit" else self.analyze_items
+            items = self.menus[self.active_submenu]
             submenu_y = self.map.menu_height
             submenu_width = self._get_submenu_width(items, pygame.font.Font(None, self.map.ui_font_size))
             submenu_height = len(items) * self.map.submenu_item_height + 10
             if submenu_x <= x <= submenu_x + submenu_width and submenu_y <= y <= submenu_y + submenu_height:
                 item_index = (y - submenu_y - 5) // self.map.submenu_item_height
                 if 0 <= item_index < len(items):
-                    self._handle_submenu_action(self.active_submenu, items[item_index])
+                    menu, item = self.active_submenu, items[item_index]
+                    if not self.is_menu_item_enabled(menu, item):
+                        return True   # disabled: ignore the click, keep the menu open
                     self.active_submenu = None
+                    self._handle_submenu_action(menu, item)
                 return True
             self.active_submenu = None
 
         return False
 
+    MENU_DISABLED = (150, 150, 150)
+
+    def is_menu_item_enabled(self, menu: str, item: str) -> bool:
+        if menu == "Play":
+            return self.game_controller.can_stop if item == "Stop" else not self.is_game_running
+        if menu == "Edit":
+            return not self.is_game_running
+        return True
+
+    def _board_snapshot(self):
+        self.draw(self.position)
+        return self.screen.copy()
+
     def _handle_submenu_action(self, menu: str, item: str):
-        if menu == "Analyze" and item == "Show winning chances":
+        if menu == "Analyze" and item == "Show equity":
             self.analyze()
         elif menu == "Analyze" and item == "Settings":
-            self.draw(self.position)
-            board_snapshot = self.screen.copy()
-            SettingsDialog(self.screen, self.map).show(board_snapshot)
+            SettingsDialog(self.screen, self.map, self.analysis_worker).show(self._board_snapshot())
+        elif menu == "Play" and item == "Start...":
+            config = PlaySetupDialog(self.screen, self.map).run(self._board_snapshot())
+            if config is not None:
+                self.text_area.clear()
+                self.game_controller.start(config)
+                self.position = self.game_controller.display_position()
+        elif menu == "Play" and item == "Stop":
+            self.game_controller.stop()
         elif menu == "Edit" and item == "Clear Board":
             self.clear_board()
         elif menu == "Edit" and item == "Starting Position":
@@ -437,9 +545,13 @@ class Board:
                 self.active_submenu = None
         elif key == pygame.K_a and pygame.key.get_mods() & pygame.KMOD_CTRL:
             self.analyze()
+        elif key == pygame.K_BACKSPACE:
+            self.game_controller.undo()
 
     def analyze(self):
-        """Analyze the current position and show winning chances."""
-        self.show_text("Analyzing position for winning chances...")
-        pw = AnalyzerProxy.winning_chances(position=self.position, player=Player.ME)
-        self.show_text(f"My winning chances: {pw}")
+        """Start analyzing the current position in the background; update() shows the result."""
+        if self._pending_analysis is not None:
+            self.text_area.show_text("Analysis already in progress...")
+            return
+        self.text_area.show_text("Analyzing position...")
+        self._pending_analysis = self.analysis_worker.equity(self.position, Player.ME)
