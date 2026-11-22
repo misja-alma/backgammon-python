@@ -3,7 +3,7 @@ import unittest
 
 from backgammon.game.game import (Game, GameConfig, PlayerConfig, PlayerType, MoveBuilder,
                                   format_move)
-from backgammon.game.position import Position, Player
+from backgammon.game.position import GameVariant, Position, Player
 
 
 class ScriptedDice:
@@ -150,6 +150,42 @@ class RustGameTest(unittest.TestCase):
         self.assertEqual(results[0], results[1])
 
 
+class NackgammonTest(unittest.TestCase):
+
+    def test_starting_position(self):
+        position = Position()
+        position.setup_starting_position(GameVariant.NACKGAMMON)
+        expected = [0] * 26
+        for point, count in {24: 2, 23: 2, 13: 4, 8: 3, 6: 4}.items():
+            expected[point] = count
+        self.assertEqual(expected, position.me_checkers)
+        self.assertEqual(expected, position.opponent_checkers)
+        self.assertEqual(15, sum(position.me_checkers))
+        self.assertEqual(194, position.pipcount(Player.ME))  # 167 - 13 - 6 + 2 * 23
+
+    def test_game_uses_the_configured_variant(self):
+        config = humans()
+        self.assertEqual(0, Game(config).position.me_checkers[23])
+        config.variant = GameVariant.NACKGAMMON
+        game = Game(config)
+        self.assertEqual(2, game.position.me_checkers[23])
+        self.assertEqual(2, game.position.opponent_checkers[23])
+
+    def test_nackgammon_game_in_rust(self):
+        config = engines(PlayerType.RUST_ENGINE, depth=0)
+        config.variant = GameVariant.NACKGAMMON
+        results = []
+        for _ in range(2):
+            game = Game(config)
+            game.play_in_rust(seed=99)
+            self.assertTrue(game.is_over)
+            results.append((game.winner, game.turns, game.position.me_checkers))
+        self.assertEqual(results[0], results[1])
+        backgammon = Game(engines(PlayerType.RUST_ENGINE, depth=0))
+        backgammon.play_in_rust(seed=99)
+        self.assertNotEqual(results[0], (backgammon.winner, backgammon.turns, backgammon.position.me_checkers))
+
+
 class MoveBuilderTest(unittest.TestCase):
 
     def setUp(self):
@@ -197,3 +233,19 @@ class FormatMoveTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PipcountTest(unittest.TestCase):
+    def test_starting_position(self):
+        position = Position()
+        position.setup_starting_position()
+        self.assertEqual(position.pipcount(Player.ME), 167)
+        self.assertEqual(position.pipcount(Player.OPPONENT), 167)
+
+    def test_bar_counts_25_and_off_counts_0(self):
+        position = Position()
+        position.clear()
+        position.set_checkers(Player.ME, 25, 1)
+        position.set_checkers(Player.ME, 3, 2)
+        self.assertEqual(position.pipcount(Player.ME), 31)
+        self.assertEqual(position.pipcount(Player.OPPONENT), 0)

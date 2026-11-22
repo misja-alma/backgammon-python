@@ -1,0 +1,5 @@
+Training 54-128-128-1, 0 games for 3000000 games: Adam, alpha 0.00003, lambda 0.7, seed 3 -> nets/adam/adam-h128-128-s3.bgnet
+  1000000 games (  1000000 total)  alpha 0.00003     748 games/s   63.3 turns/game  vs pip count  97.5%  saved
+  2000000 games (  2000000 total)  alpha 0.00003     800 games/s   61.6 turns/game  vs pip count  96.7%  saved
+  3000000 games (  3000000 total)  alpha 0.00003     824 games/s   61.1 turns/game  vs pip count  96.4%  saved
+average of the last 200000 games saved to nets/adam/adam-h128-128-s3-avg.bgnet  vs pip count  96.0%

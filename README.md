@@ -22,6 +22,20 @@ maturin develop --release
 Always use `--release` (as `make build` does): without it maturin builds the Rust code
 unoptimized, which makes the engine about 8× slower.
 
+### bgsage engine (optional)
+
+[bgsage](https://github.com/markbgsage/bgsage) is a strong neural-network engine, available as
+"bgsage" in the Settings and Start game dialogs. It needs Python 3.10 or later, so it is installed
+in its own virtualenv `.venv-bgsage`, and the app runs it as a subprocess
+(`backgammon/game/bgsage_server.py`). Install it from a local checkout with:
+
+```bash
+make bgsage                       # BGSAGE_SRC=~/workspace/bgsage, BGSAGE_PYTHON=python3.14 by default
+```
+
+bgsage always plays a 1-point match (no cube, no gammons). Depth 0 is bgsage's 1-ply, the raw
+network evaluation; depth d is (d+1)-ply, up to depth 3 (4-ply, roughly a second per move).
+
 ### PyCharm
 
 Configure PyCharm to use the venv interpreter so the Rust extension is available:
@@ -94,7 +108,16 @@ Editing a position (when no game is running):
 - **Escape** — quit
 
 Playing a game (**Play → Start…**, choose a human or an engine with its search depth for each
-player; **Play → Stop** ends the game):
+player, and the game: **Backgammon** or **Nackgammon**; **Play → Stop** ends the game).
+Nackgammon has the same rules with a different starting position: each player moves one checker
+from the 13 point and one from the 6 point to the 23 point (2 on the 24, 2 on the 23, 4 on the 13,
+3 on the 8, 4 on the 6). The Rust engine can use a separate net for each game type
+(`rust_network` and `rust_nackgammon_network` in `backgammon/game/settings.py`); by default both
+are `nets/td.bgnet`, a 256-256 net trained on both variants. Once both sides are bearing off, the
+engine uses exact winning chances from a two-sided bearoff database when it exists: build it once
+with `make bearoff` (about 2 minutes, writes `data/bearoff-6x15.bd`, 5.9 GB).
+
+To play:
 
 - **Left click** on one of your checkers, then on its destination point (or the bear-off tray on
   the right). A checker can use both dice in one go. The move is played as soon as all dice are used.

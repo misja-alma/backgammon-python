@@ -1,0 +1,5 @@
+Training 254-128-128-1 td-counts-v1, 26000000 games for 3000000 games: Sgd, alpha 0.01, lambda 0.8, seed 81, 12 threads -> nets/lambda/l0.8.bgnet
+  1000000 games ( 27000000 total)  alpha 0.01000    9296 games/s   56.9 turns/game  vs pip count  99.8%  saved
+  2000000 games ( 28000000 total)  alpha 0.01000    9294 games/s   56.9 turns/game  vs pip count  99.8%  saved
+  3000000 games ( 29000000 total)  alpha 0.01000    9266 games/s   57.0 turns/game  vs pip count  99.7%  saved
+average of the last 500000 games saved to nets/lambda/l0.8-avg.bgnet  vs pip count  99.9%

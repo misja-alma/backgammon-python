@@ -1,0 +1,11 @@
+Training 54-128-64-1, 2300000 games for 1000000 games: alpha 0.01 -> 0.001 (exponential decay), lambda 0.7, seed 1 -> nets/td-decay.bgnet
+   100000 games (  2400000 total)  alpha 0.00794    1587 games/s   64.0 turns/game  vs pip count  99.6%  saved
+   200000 games (  2500000 total)  alpha 0.00631    1582 games/s   64.0 turns/game  vs pip count  99.7%  saved
+   300000 games (  2600000 total)  alpha 0.00501    1583 games/s   63.7 turns/game  vs pip count  99.6%  saved
+   400000 games (  2700000 total)  alpha 0.00398    1583 games/s   63.6 turns/game  vs pip count  99.6%  saved
+   500000 games (  2800000 total)  alpha 0.00316    1586 games/s   63.4 turns/game  vs pip count  99.5%  saved
+   600000 games (  2900000 total)  alpha 0.00251    1588 games/s   63.2 turns/game  vs pip count  99.7%  saved
+   700000 games (  3000000 total)  alpha 0.00200    1589 games/s   63.1 turns/game  vs pip count  99.7%  saved
+   800000 games (  3100000 total)  alpha 0.00158    1590 games/s   63.0 turns/game  vs pip count  99.1%  saved
+   900000 games (  3200000 total)  alpha 0.00126    1591 games/s   62.9 turns/game  vs pip count  99.3%  saved
+  1000000 games (  3300000 total)  alpha 0.00100    1593 games/s   62.8 turns/game  vs pip count  99.5%  saved

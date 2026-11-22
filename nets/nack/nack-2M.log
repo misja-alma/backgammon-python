@@ -1,0 +1,4 @@
+Training 254-128-128-1 td-counts-v1, 26000000 games for 2000000 Nackgammon games: Sgd, alpha 0.01, lambda 0.7, seed 91, 12 threads -> nets/nack/nack-2M.bgnet
+  1000000 games ( 27000000 total)  alpha 0.01000    7439 games/s   67.7 turns/game  vs pip count  99.8%  saved
+  2000000 games ( 28000000 total)  alpha 0.01000    7446 games/s   67.6 turns/game  vs pip count  99.6%  saved
+average of the last 500000 games saved to nets/nack/nack-2M-avg.bgnet  vs pip count  99.8%

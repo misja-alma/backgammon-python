@@ -1,0 +1,6 @@
+Perturbed the starting weights: shrink 0, noise 0.2 x layer std (seed 14)
+Training 54-128-128-128-1, 30000000 games for 3000000 games: Sgd, alpha 0.01, lambda 0.7, seed 14, 12 threads -> nets/perturb/p0.2.bgnet
+  1000000 games ( 31000000 total)  alpha 0.01000    8521 games/s   60.8 turns/game  vs pip count  99.9%  saved
+  2000000 games ( 32000000 total)  alpha 0.01000    8456 games/s   60.8 turns/game  vs pip count  99.7%  saved
+  3000000 games ( 33000000 total)  alpha 0.01000    8416 games/s   60.8 turns/game  vs pip count  99.3%  saved
+average of the last 500000 games saved to nets/perturb/p0.2-avg.bgnet  vs pip count 100.0%

@@ -1,0 +1,5 @@
+Training 54-162-108-128-1, 0 games for 1000000 games: alpha 0.01, lambda 0.7, seed 1 -> nets/size/h162-108-128.bgnet
+   250000 games (   250000 total)  alpha 0.01000     389 games/s   81.6 turns/game  vs pip count  95.0%  saved
+   500000 games (   500000 total)  alpha 0.01000     415 games/s   75.7 turns/game  vs pip count  95.8%  saved
+   750000 games (   750000 total)  alpha 0.01000     434 games/s   72.1 turns/game  vs pip count  96.8%  saved
+  1000000 games (  1000000 total)  alpha 0.01000     446 games/s   69.9 turns/game  vs pip count  98.2%  saved

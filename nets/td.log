@@ -1,0 +1,13 @@
+Training 54-128-64-1, 0 games for 300000 games: alpha 0.01, lambda 0.7, seed 1 -> nets/td.bgnet
+    25000 games (    25000 total)     663 games/s  116.3 turns/game  vs pip count  84.0%  saved
+    50000 games (    50000 total)     678 games/s  107.0 turns/game  vs pip count  85.2%  saved
+    75000 games (    75000 total)     703 games/s  102.9 turns/game  vs pip count  85.4%  saved
+   100000 games (   100000 total)     717 games/s  100.9 turns/game  vs pip count  88.7%  saved
+   125000 games (   125000 total)     728 games/s   99.2 turns/game  vs pip count  89.4%  saved
+   150000 games (   150000 total)     737 games/s   98.0 turns/game  vs pip count  92.1%  saved
+   175000 games (   175000 total)     747 games/s   96.8 turns/game  vs pip count  90.9%  saved
+   200000 games (   200000 total)     761 games/s   94.9 turns/game  vs pip count  91.9%  saved
+   225000 games (   225000 total)     776 games/s   93.1 turns/game  vs pip count  91.3%  saved
+   250000 games (   250000 total)     789 games/s   91.6 turns/game  vs pip count  93.8%  saved
+   275000 games (   275000 total)     802 games/s   90.2 turns/game  vs pip count  94.6%  saved
+   300000 games (   300000 total)     813 games/s   89.0 turns/game  vs pip count  93.1%  saved

@@ -13,6 +13,20 @@ class Player(Enum):
             return Player.ME
 
 
+class GameVariant(Enum):
+    """Which starting position a game uses; the rules are otherwise the same."""
+    BACKGAMMON = "Backgammon"
+    NACKGAMMON = "Nackgammon"
+
+    @property
+    def starting_layout(self) -> dict[int, int]:
+        """Checkers per point for each player, in that player's own numbering."""
+        if self == GameVariant.NACKGAMMON:
+            # One checker each from the 13 and 6 points moved to the 23 point.
+            return {24: 2, 23: 2, 13: 4, 8: 3, 6: 4}
+        return {24: 2, 13: 5, 8: 3, 6: 5}
+
+
 class Position:
     def __init__(self):
         # Arrays representing checkers for each player on points 0-25
@@ -29,6 +43,18 @@ class Position:
         self.cube_owner: Player = None  # None means centered, otherwise owned by a player
 
         self._hash: int | None = None
+
+    def __deepcopy__(self, memo) -> "Position":
+        """Fast deep copy: only the checker lists are mutable, the other fields are shared.
+        Move generation copies positions constantly, and generic deepcopy is ~30x slower."""
+        new = Position.__new__(Position)
+        new.opponent_checkers = self.opponent_checkers.copy()
+        new.me_checkers = self.me_checkers.copy()
+        new.turn = self.turn
+        new.cube_value = self.cube_value
+        new.cube_owner = self.cube_owner
+        new._hash = self._hash
+        return new
 
     def __str__(self) -> str:
         me_parts = [f"{i}:{n}" for i, n in enumerate(self.me_checkers) if n]
@@ -73,6 +99,11 @@ class Position:
         else:
             return self.me_checkers[point]
 
+    def pipcount(self, player: Player) -> int:
+        """Sum of the point numbers of all the player's checkers (bar counts as 25, off as 0)."""
+        checkers = self.me_checkers if player == Player.ME else self.opponent_checkers
+        return sum(point * count for point, count in enumerate(checkers))
+
     def switch_turn(self) -> None:
         """Switch to the other player's turn."""
         self.turn = Player.ME if self.turn == Player.OPPONENT else Player.OPPONENT
@@ -105,28 +136,14 @@ class Position:
             checkers[0] = 15
         self._invalidate_hash()
 
-    def setup_starting_position(self) -> None:
-        """Set up the standard backgammon starting position."""
-        # Clear all positions
+    def setup_starting_position(self, variant: GameVariant = GameVariant.BACKGAMMON) -> None:
+        """Set up the starting position of the given variant (standard backgammon by default)."""
         self.opponent_checkers = [0] * 26
         self.me_checkers = [0] * 26
-
-        # Both players have identical starting positions
-        # 2 checkers on point 24
-        self.opponent_checkers[24] = 2
-        self.me_checkers[24] = 2
-
-        # 5 checkers on point 13
-        self.opponent_checkers[13] = 5
-        self.me_checkers[13] = 5
-
-        # 3 checkers on point 8
-        self.opponent_checkers[8] = 3
-        self.me_checkers[8] = 3
-
-        # 5 checkers on point 6
-        self.opponent_checkers[6] = 5
-        self.me_checkers[6] = 5
+        # Both players have identical starting positions, each in their own numbering.
+        for point, count in variant.starting_layout.items():
+            self.opponent_checkers[point] = count
+            self.me_checkers[point] = count
 
         # Reset game state
         self.turn = Player.ME

@@ -1,0 +1,4 @@
+Training 54-128-128-128-1, 39000000 games for 1000000 games: Sgd, alpha 0.01, lambda 0.7, seed 47, 12 threads -> nets/to40m/40M.bgnet
+   500000 games ( 39500000 total)  alpha 0.01000    8447 games/s   60.5 turns/game  vs pip count  99.2%  saved
+  1000000 games ( 40000000 total)  alpha 0.01000    8442 games/s   60.5 turns/game  vs pip count  99.7%  saved
+average of the last 500000 games saved to nets/to40m/40M-avg.bgnet  vs pip count  99.5%

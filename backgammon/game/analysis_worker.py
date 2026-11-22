@@ -23,6 +23,7 @@ class AnalysisWorker:
         self._tasks: queue.Queue[tuple[Future, Callable]] = queue.Queue()
         self._thread = threading.Thread(target=self._run, name="analysis-worker", daemon=True)
         self._thread.start()
+        self.rust_network = None   # path of the net last submitted with set_rust_network
 
     def _run(self) -> None:
         while True:
@@ -53,6 +54,26 @@ class AnalysisWorker:
         """Resize the Rust engine's cache on the worker thread (where the engine runs), after any
         queued task."""
         return self.submit(lambda: AnalyzerProxy.set_rust_cache_size(megabytes))
+
+    def set_rust_network(self, path) -> Future:
+        """Switch the Rust engine's evaluator on the worker thread (see
+        AnalyzerProxy.set_rust_network). The future resolves to the evaluator's description."""
+        self.rust_network = path
+        return self.submit(lambda: AnalyzerProxy.set_rust_network(path))
+
+    def set_rust_bearoff(self, path) -> Future:
+        """Load the bearoff database on the worker thread (see AnalyzerProxy.set_rust_bearoff).
+        The future resolves to its description."""
+        return self.submit(lambda: AnalyzerProxy.set_rust_bearoff(path))
+
+    def use_rust_network(self, path) -> Future:
+        """Like set_rust_network, but does nothing (an already resolved future) when path is the
+        net already in use, so the engine's cache is kept."""
+        if path == self.rust_network:
+            future = Future()
+            future.set_result(None)
+            return future
+        return self.set_rust_network(path)
 
     def clear_caches(self) -> Future:
         """Clear the engine caches on the worker thread, after any queued analysis."""

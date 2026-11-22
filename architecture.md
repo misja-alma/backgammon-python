@@ -48,9 +48,13 @@ engine also has a Rust implementation that is compiled into a native Python exte
 | Entry point / event loop | `main.py` | Python | Creates the board, dispatches pygame events, redraws at 60 fps |
 | UI | `backgammon/ui/` | Python (pygame) | Rendering the board, menus, dialogs, text output; translating clicks into position edits or game moves; driving a game (`GameController`) |
 | Game model | `backgammon/game/position.py`, `utils.py`, `settings.py`, `game.py` | Python | Board state, rules and move generation, settings, playing a game |
-| Evaluator | `backgammon/game/evaluator.py`, `src/evaluator.rs` | Python + Rust | Static equity of a position, used where the search stops |
+| Evaluator | `backgammon/game/evaluator.py`, `src/evaluator.rs` | Python + Rust | Static equity of a position, used where the search stops. In Rust a pluggable `Evaluator` trait: placeholder (default), pip count, or neural net |
+| Neural net | `src/neural_net.rs`, `src/encoding.rs` | Rust | 54-128-64-1 net estimating the winning chance of the side to move; weight files in `nets/`, loaded from `Settings.rust_network` |
+| Training | `src/td_training.rs`, `src/bin/train.rs` | Rust | TD(λ) self-play training of the net (`make train`) |
+| Strength benchmark | `benchmarks/strength.py` | Python | Paired games of our engine against bgsage (`make strength`), results in `benchmarks/strength_results.csv` |
 | Analysis worker | `backgammon/game/analysis_worker.py` | Python | Runs analysis and engine moves on one dedicated background thread so the UI stays responsive |
-| Analyzer proxy | `backgammon/game/analyzer_proxy.py` | Python | Synchronous facade over both engines; dispatches to the Python or Rust engine |
+| Analyzer proxy | `backgammon/game/analyzer_proxy.py` | Python | Synchronous facade over the engines; dispatches to the Python, Rust or bgsage engine |
+| bgsage engine | `backgammon/game/bgsage_analyzer.py`, `bgsage_server.py` | Python | Client for the external bgsage engine, which runs as a subprocess in `.venv-bgsage` (it needs Python ≥ 3.10) and is spoken to with JSON lines over a pipe |
 | Python engine | `backgammon/game/python_analyzer.py` | Python | Reference implementation of the search |
 | Rust engine | `src/` | Rust | Fast implementation of the same search, exposed to Python as module `backgammon_rust` |
 | Logger | `backgammon/logger.py` | Python | Routes status messages to the on-screen text area (or stdout) |

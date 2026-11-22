@@ -1,0 +1,5 @@
+Training 54-128-128-128-1, 30000000 games for 3000000 games: Sgd, alpha 0.01, lambda 0.7, seed 15, 12 threads -> nets/perturb/control-b.bgnet
+  1000000 games ( 31000000 total)  alpha 0.01000    8367 games/s   60.8 turns/game  vs pip count  99.8%  saved
+  2000000 games ( 32000000 total)  alpha 0.01000    8356 games/s   60.8 turns/game  vs pip count  99.7%  saved
+  3000000 games ( 33000000 total)  alpha 0.01000    8341 games/s   60.8 turns/game  vs pip count  99.7%  saved
+average of the last 500000 games saved to nets/perturb/control-b-avg.bgnet  vs pip count  99.7%

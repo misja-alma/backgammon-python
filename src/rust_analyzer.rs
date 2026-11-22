@@ -1,14 +1,19 @@
 use std::cell::{Cell, RefCell};
+use std::sync::Arc;
+use crate::bearoff::BearoffDb;
 use crate::transposition_table::TranspositionTable;
-use crate::evaluator::Evaluator;
+use crate::evaluator::{self, Evaluator, TerminalEvaluator};
 use crate::position::{Position, Player};
 use crate::move_generator::MoveGenerator;
 
 /// Expectimax search over dice rolls (port of the Python `PythonAnalyzer`).
 ///
 /// Equity is computed for the side to move and negated when viewed from the other side.
-/// `depth` is the number of remaining roll levels: at depth 0 the Evaluator gives the answer.
+/// `depth` is the number of remaining roll levels: at depth 0 the evaluator gives the answer.
 pub struct RustAnalyzer<P: Position + Clone> {
+    /// Static evaluation where the search stops. Pluggable: the placeholder `TerminalEvaluator`
+    /// by default, or e.g. a `NeuralNetEvaluator` (see `set_evaluator`).
+    evaluator: Box<dyn Evaluator<P>>,
     /// (position, remaining depth) → equity for the side to move. Keyed by the position itself
     /// (in compact form, see `Position::cache_key`), so different positions never share an entry.
     /// Fixed size: when full, old entries are replaced (see `TranspositionTable`), so memory stays
@@ -19,6 +24,8 @@ pub struct RustAnalyzer<P: Position + Clone> {
     hits: Cell<u64>,
     /// Reused for every roll, so its hash tables aren't rebuilt from scratch each time.
     generator: RefCell<MoveGenerator<P>>,
+    /// Exact values for bearoff positions (see `set_bearoff`), or None.
+    bearoff: Option<Arc<BearoffDb>>,
 }
 
 /// Default size of the analyzer's cache. The app overrides it from its settings
@@ -34,11 +41,60 @@ impl<P: Position + Clone> RustAnalyzer<P> {
     /// An analyzer whose cache uses at most `megabytes` of memory.
     pub fn with_cache_mb(megabytes: usize) -> Self {
         RustAnalyzer {
+            evaluator: Box::new(TerminalEvaluator),
             cache: RefCell::new(TranspositionTable::with_size_bytes(megabytes << 20)),
             lookups: Cell::new(0),
             hits: Cell::new(0),
             generator: RefCell::new(MoveGenerator::new()),
+            bearoff: None,
         }
+    }
+
+    /// An analyzer using `evaluator`, with a cache of `megabytes`.
+    pub fn with_evaluator(evaluator: Box<dyn Evaluator<P>>, megabytes: usize) -> Self {
+        let mut analyzer = Self::with_cache_mb(megabytes);
+        analyzer.evaluator = evaluator;
+        analyzer
+    }
+
+    /// Replace the evaluator. Clears the cache, whose values came from the old one.
+    pub fn set_evaluator(&mut self, evaluator: Box<dyn Evaluator<P>>) {
+        self.evaluator = evaluator;
+        self.clear_cache();
+    }
+
+    pub fn evaluator(&self) -> &dyn Evaluator<P> {
+        self.evaluator.as_ref()
+    }
+
+    /// Use the bearoff database for positions it covers, or stop using one (None). Such positions
+    /// get their exact value at any depth: the search doesn't look past them. Clears the cache.
+    pub fn set_bearoff(&mut self, bearoff: Option<Arc<BearoffDb>>) {
+        self.bearoff = bearoff;
+        self.clear_cache();
+    }
+
+    pub fn bearoff(&self) -> Option<&BearoffDb> {
+        self.bearoff.as_deref()
+    }
+
+    /// The exact value from the bearoff database when it covers the position, else the
+    /// evaluator's. (Finished games are covered too, with the same values.)
+    #[inline]
+    fn static_equity(&self, position: &P) -> f64 {
+        match &self.bearoff {
+            Some(db) => db.equity(position).unwrap_or_else(|| self.evaluator.evaluate(position)),
+            None => self.evaluator.evaluate(position),
+        }
+    }
+
+    /// Replace the cache with an empty one of at most `megabytes`, keeping the evaluator.
+    pub fn set_cache_mb(&mut self, megabytes: usize) {
+        // Free the old table before allocating the new one, so both never exist at once.
+        *self.cache.borrow_mut() = TranspositionTable::with_size_bytes(1 << 20);
+        *self.cache.borrow_mut() = TranspositionTable::with_size_bytes(megabytes.max(1) << 20);
+        self.lookups.set(0);
+        self.hits.set(0);
     }
 
     pub fn clear_cache(&self) {
@@ -93,8 +149,11 @@ impl<P: Position + Clone> RustAnalyzer<P> {
     }
 
     fn equity_for_turn(&self, position: &P, depth: u32) -> f64 {
-        if depth == 0 || Evaluator::is_game_over(position) {
-            return Evaluator::evaluate(position);
+        if depth == 0 || evaluator::is_game_over(position) {
+            return self.static_equity(position);
+        }
+        if let Some(equity) = self.bearoff.as_ref().and_then(|db| db.equity(position)) {
+            return equity;
         }
 
         let key = position.cache_key(depth as u16);
@@ -124,7 +183,7 @@ impl<P: Position + Clone> RustAnalyzer<P> {
             // score each resulting position as it is generated instead of collecting them.
             // (A child has the opponent to move, so negate its evaluation.)
             best = self.generator.borrow_mut()
-                .best_position(position, die1, die2, |child| -Evaluator::evaluate(child));
+                .best_position(position, die1, die2, |child| -self.static_equity(child));
         } else {
             // Each distinct resulting position once (many move sequences lead to the same
             // position), in a deterministic order, so ties are always broken the same way.
@@ -166,6 +225,34 @@ mod tests {
         for &(i, count) in me  { me_vec[i] = count; }
         for &(i, count) in opp { opp_vec[i] = count; }
         crate::build_position(me_vec, opp_vec, turn, 1, None).unwrap()
+    }
+
+    #[test]
+    fn test_bearoff_database_gives_exact_values_at_any_depth() {
+        let checkers = 5;
+        let path = std::env::temp_dir().join(format!("bearoff_analyzer_{}.bd", std::process::id()));
+        crate::bearoff::write(&path, checkers, &crate::bearoff::generate(checkers, 2, |_, _| {})).unwrap();
+        let db = Arc::new(BearoffDb::open(&path).unwrap());
+        std::fs::remove_file(&path).unwrap();
+        // Bearoff: Me 3 on the 6-point and 1 on the 5-point (11 off), Opponent 2 on the 4-point.
+        let p = pos(&[(0, 11), (6, 3), (5, 1)], &[(0, 13), (4, 2)], 1);
+        let exact = db.equity(&p).unwrap();
+        // Without the database a deep search with the placeholder evaluator approaches the exact
+        // value; with it every depth gives exactly the stored value.
+        let mut analyzer = RustAnalyzer::with_cache_mb(16);
+        analyzer.set_bearoff(Some(db.clone()));
+        for depth in 0..3 {
+            assert_eq!(analyzer.equity(&p, Player::Me, depth), exact);
+            assert_eq!(analyzer.equity(&p, Player::Opponent, depth), -exact);
+        }
+        // At depth 0 a move is chosen by the database values of the children.
+        let (child, equity) = analyzer.best_move(&p, 6, 5, 0).unwrap();
+        assert_eq!(equity, -db.equity(&child).unwrap());
+        // Outside the bearoff (a checker on the 7-point) the evaluator is used: 0 for the placeholder.
+        let contact = pos(&[(0, 10), (7, 1), (6, 3), (5, 1)], &[(0, 13), (4, 2)], 1);
+        assert_eq!(analyzer.equity(&contact, Player::Me, 0), 0.0);
+        analyzer.set_bearoff(None);
+        assert_eq!(analyzer.equity(&p, Player::Me, 0), 0.0);
     }
 
     #[test]

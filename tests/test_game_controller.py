@@ -191,5 +191,19 @@ class GameControllerTest(unittest.TestCase):
         self.assertIn("ME rolls 6-5: no legal move", self.log.lines)
 
 
+    def test_each_variant_uses_its_own_net(self):
+        from backgammon.game.position import GameVariant
+        from backgammon.game.settings import Settings
+        human = config(PlayerType.HUMAN, PlayerType.HUMAN)
+        human.variant = GameVariant.NACKGAMMON
+        self.controller.start(human, rng=random.Random(1))
+        self.assertEqual(Settings.rust_nackgammon_network, self.controller.worker.rust_network)
+        human.variant = GameVariant.BACKGAMMON
+        self.controller.start(human, rng=random.Random(1))
+        self.assertEqual(Settings.rust_network, self.controller.worker.rust_network)
+        self.controller.worker.submit(lambda: None).result()
+        self.assertFalse(any("placeholder" in line for line in self.log.lines))
+
+
 if __name__ == '__main__':
     unittest.main()

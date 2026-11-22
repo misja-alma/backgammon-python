@@ -50,8 +50,25 @@ class Board:
         # Background work: analysis and engine moves share one worker thread
         self.analysis_worker = AnalysisWorker()
         self.analysis_worker.set_rust_cache_size(Settings.rust_cache_mb)
+        self.analysis_worker.set_rust_network(Settings.rust_network).add_done_callback(self._log_evaluator)
+        self.analysis_worker.set_rust_bearoff(Settings.rust_bearoff_db).add_done_callback(self._log_bearoff)
         self._pending_analysis = None  # Future of the running analysis, or None
         self.game_controller = GameController(self.analysis_worker)
+
+    @staticmethod
+    def _log_bearoff(future) -> None:
+        """Report whether the Rust engine uses the bearoff database (runs on the worker thread)."""
+        error = future.exception()
+        Logger.log(f"Rust engine bearoff: {future.result()}" if error is None else f"Rust engine bearoff: none ({error})")
+
+    @staticmethod
+    def _log_evaluator(future) -> None:
+        """Report which evaluator the Rust engine uses (runs on the worker thread)."""
+        error = future.exception()
+        if error is None:
+            Logger.log(f"Rust engine evaluator: {future.result()}")
+        else:
+            Logger.log(f"Rust engine evaluator: placeholder ({error})")
 
     def update(self):
         """Per-frame housekeeping on the main thread: log output, analyses and the game."""
@@ -102,6 +119,7 @@ class Board:
         self._draw_bear_off_line()
         self._draw_checkers(position)
         self._draw_labels()
+        self._draw_pipcounts(position)
         self._draw_cube(position)
         self._draw_turn_indicator()
         self._draw_dice()
@@ -205,18 +223,18 @@ class Board:
             self.screen.blit(text, text_rect)
 
     def _draw_checkers_borne_off(self, position: Position):
-        """Draw borne off checkers."""
+        """Draw borne off checkers at the side of each player's home board."""
         me_count = position.get_checkers(Player.ME, 0)
         opponent_count = position.get_checkers(Player.OPPONENT, 0)
 
-        for i in range(min(me_count, 10)):
+        for i in range(min(opponent_count, 10)):
             y = self.map.board_y + self.map.checker_radius + i * self.map.checker_radius // 2
-            pygame.draw.circle(self.screen, self.map.WHITE, (self.map.bear_off_x, y), self.map.checker_radius)
+            pygame.draw.circle(self.screen, self.map.RED, (self.map.bear_off_x, y), self.map.checker_radius)
             pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bear_off_x, y), self.map.checker_radius, 2)
 
-        for i in range(min(opponent_count, 10)):
+        for i in range(min(me_count, 10)):
             y = self.map.board_y + self.map.board_height - self.map.checker_radius - i * self.map.checker_radius // 2
-            pygame.draw.circle(self.screen, self.map.RED, (self.map.bear_off_x, y), self.map.checker_radius)
+            pygame.draw.circle(self.screen, self.map.WHITE, (self.map.bear_off_x, y), self.map.checker_radius)
             pygame.draw.circle(self.screen, self.map.BLACK, (self.map.bear_off_x, y), self.map.checker_radius, 2)
 
     def _draw_labels(self):
@@ -234,6 +252,17 @@ class Board:
             text = font.render(str(point), True, self.map.BLACK)
             text_rect = text.get_rect(center=(x, self.map.board_y + self.map.board_height + self.map.label_margin))
             self.screen.blit(text, text_rect)
+
+    def _draw_pipcounts(self, position: Position):
+        """Draw each player's pipcount in the label row at the side of their home board."""
+        font = pygame.font.Font(None, self.map.label_font_size)
+        x = self.map.bear_off_x
+        top_y = self.map.board_y - self.map.label_margin
+        bottom_y = self.map.board_y + self.map.board_height + self.map.label_margin
+        for player, color, y in ((Player.ME, self.map.WHITE, bottom_y),
+                                 (Player.OPPONENT, self.map.RED_LIGHT, top_y)):
+            text = font.render(str(position.pipcount(player)), True, color)
+            self.screen.blit(text, text.get_rect(center=(x, y)))
 
     def _draw_cube(self, position: Position):
         """Draw the doubling cube on the left margin at the side of the owner."""

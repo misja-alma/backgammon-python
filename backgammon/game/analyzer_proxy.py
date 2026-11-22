@@ -1,13 +1,17 @@
+from pathlib import Path
 from typing import Optional
 
 from backgammon.game.position import Position, Player
+from backgammon.game.bgsage_analyzer import BgsageAnalyzer
 from backgammon.game.python_analyzer import PythonAnalyzer
 from backgammon.game.settings import Settings, Analyzer
 import backgammon_rust
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class AnalyzerProxy:
-    """Synchronous facade over the Python and Rust engines.
+    """Synchronous facade over the Python, Rust and bgsage engines.
 
     Each call can name the engine and search depth explicitly (as game players do); when they
     are omitted, the global Settings are used (as the Analyze menu does).
@@ -45,6 +49,8 @@ class AnalyzerProxy:
                 cls._player_to_int(player),
                 depth,
             )
+        if engine == Analyzer.BGSAGE:
+            return BgsageAnalyzer.equity(position, player, depth)
         return PythonAnalyzer.equity(position, player, depth)
 
     @classmethod
@@ -68,15 +74,19 @@ class AnalyzerProxy:
             new_pos.set_turn(Player.ME if turn == 1 else Player.OPPONENT)
             new_pos.set_cube(position.cube_value, position.cube_owner)
             return new_pos, equity
+        if engine == Analyzer.BGSAGE:
+            return BgsageAnalyzer.best_move(position, die1, die2, depth)
         return PythonAnalyzer.best_move(position, die1, die2, depth)
 
     @staticmethod
-    def play_rust_game(me_depth: int, opponent_depth: int, seed: int) -> tuple[Player, Position, int]:
-        """Play a complete Rust-engine-vs-Rust-engine game inside Rust.
+    def play_rust_game(me_depth: int, opponent_depth: int, seed: int,
+                       nackgammon: bool = False) -> tuple[Player, Position, int]:
+        """Play a complete Rust-engine-vs-Rust-engine game inside Rust, from the backgammon or
+        (nackgammon=True) the nackgammon starting position.
 
         Cannot be interrupted. Returns (winner, final position, number of turns).
         """
-        winner, me_checkers, opp_checkers, turns = backgammon_rust.play_game(me_depth, opponent_depth, seed)
+        winner, me_checkers, opp_checkers, turns = backgammon_rust.play_game(me_depth, opponent_depth, seed, nackgammon)
         position = Position()
         position.me_checkers = list(me_checkers)
         position.opponent_checkers = list(opp_checkers)
@@ -94,6 +104,33 @@ class AnalyzerProxy:
     def rust_cache_size_mb() -> int:
         """Memory reserved for the Rust engine's cache on the calling thread, in MB."""
         return backgammon_rust.cache_size_mb()
+
+    @staticmethod
+    def set_rust_network(path: Optional[str]) -> str:
+        """Use the neural net in the weight file at path (relative paths are taken from the
+        project root) as the Rust engine's evaluator, or the placeholder evaluator for None.
+        Like the cache, this is per thread: call it on the thread that runs the engine.
+        Returns a description of the evaluator; raises ValueError for a missing or bad file."""
+        if path is None:
+            backgammon_rust.use_placeholder_evaluator()
+        else:
+            full_path = Path(path) if Path(path).is_absolute() else PROJECT_ROOT / path
+            if not full_path.exists():
+                raise ValueError(f"Network file {full_path} not found")
+            backgammon_rust.load_network(str(full_path))
+        return backgammon_rust.evaluator_name()
+
+    @staticmethod
+    def set_rust_bearoff(path: Optional[str]) -> str:
+        """Use the bearoff database file at path (relative paths are taken from the project root)
+        for the Rust engine's bearoff positions, or none for None. Per thread, like the net.
+        Returns a description; raises ValueError for a missing or bad file."""
+        if path is None:
+            return backgammon_rust.load_bearoff(None)
+        full_path = Path(path) if Path(path).is_absolute() else PROJECT_ROOT / path
+        if not full_path.exists():
+            raise ValueError(f"Bearoff database {full_path} not found (build it with 'make bearoff')")
+        return backgammon_rust.load_bearoff(str(full_path))
 
     @classmethod
     def clear_caches(cls) -> None:

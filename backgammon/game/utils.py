@@ -4,15 +4,6 @@ import copy
 
 class Utils:
     @staticmethod
-    def pipcount(position: Position, player: Player) -> int:
-        """Calculate the pipcount for a player - sum of positions of all checkers."""
-        total = 0
-        for point in range(1, 26):  # Points 1-25 (exclude 0 as those are off the board)
-            checkers = position.get_checkers(player, point)
-            total += point * checkers
-        return total
-
-    @staticmethod
     def can_bear_off(position: Position) -> bool:
         """Check if current player can bear off (all checkers in home board)."""
         player = position.turn

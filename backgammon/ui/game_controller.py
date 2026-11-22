@@ -5,6 +5,7 @@ from typing import Callable, Optional
 from backgammon.game.analysis_worker import AnalysisWorker
 from backgammon.game.game import Game, GameConfig, MoveBuilder, player_name
 from backgammon.game.position import Position, Player
+from backgammon.game.settings import Settings
 from backgammon.game.utils import Utils
 from backgammon.logger import Logger
 
@@ -84,6 +85,8 @@ class GameController:
         # A hidden game logs only its outcome, not hundreds of moves.
         self.game = Game(config, rng=rng, log=(lambda message: None) if hidden else Logger.log)
         self._start_position = copy.deepcopy(self.game.position)
+        # Each variant has its own net; the switch is queued before any engine move.
+        self.worker.use_rust_network(Settings.rust_network_for(config.variant)).add_done_callback(self._log_network)
 
         if self.game.runs_in_rust:
             # Rust plays the whole game, opening roll included; Python only waits for the result.
@@ -103,6 +106,13 @@ class GameController:
             self._pending = (generation, future)
         else:
             self._next_action_at = self.clock() + self.ENGINE_MOVE_DELAY
+
+    @staticmethod
+    def _log_network(future) -> None:
+        """Report a net that failed to load (runs on the worker thread)."""
+        error = future.exception()
+        if error is not None:
+            Logger.log(f"Rust engine evaluator: placeholder ({error})")
 
     def stop(self, silent: bool = False) -> None:
         if self.is_running and not self.can_stop:

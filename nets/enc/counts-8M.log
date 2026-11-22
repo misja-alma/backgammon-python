@@ -1,0 +1,4 @@
+Training 54-128-128-1 counts-pips-v1, 6000000 games for 2000000 games: Sgd, alpha 0.01, lambda 0.7, seed 64, 12 threads -> nets/enc/counts-8M.bgnet
+  1000000 games (  7000000 total)  alpha 0.01000   14414 games/s   63.3 turns/game  vs pip count  99.4%  saved
+  2000000 games (  8000000 total)  alpha 0.01000   14420 games/s   62.9 turns/game  vs pip count  99.9%  saved
+average of the last 500000 games saved to nets/enc/counts-8M-avg.bgnet  vs pip count  99.3%

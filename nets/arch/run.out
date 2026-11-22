@@ -1,0 +1,50 @@
+baseline 128-128 td-flags mixed 30M: bg 47.93  nack 48.27  mean 48.10
+256-256        4M: bg 47.21  nack 47.39  mean 47.30
+256-128        4M: bg 47.15  nack 46.89  mean 47.02
+256-256-256    4M: bg 47.30  nack 47.92  mean 47.61
+512-128        4M: bg 47.56  nack 47.64  mean 47.60
+256-256        8M: bg 48.22  nack 48.69  mean 48.45
+256-128        8M: bg 48.23  nack 48.23  mean 48.23
+256-256-256    8M: bg 48.48  nack 48.99  mean 48.73
+512-128        8M: bg 48.48  nack 48.56  mean 48.52
+256-256       12M: bg 48.63  nack 49.01  mean 48.82
+256-128       12M: bg 48.43  nack 48.41  mean 48.42
+256-256-256   12M: bg 48.81  nack 50.28  mean 49.55
+512-128       12M: bg 49.05  nack 49.00  mean 49.02
+256-256       16M: bg 48.67  nack 48.83  mean 48.75
+256-128       16M: bg 48.69  nack 49.23  mean 48.96
+256-256-256   16M: bg 49.19  nack 49.99  mean 49.59
+512-128       16M: bg 49.60  nack 49.93  mean 49.77
+256-256       20M: bg 48.77  nack 49.37  mean 49.07
+256-128       20M: bg 49.04  nack 49.37  mean 49.20
+256-256-256   20M: bg 49.18  nack 50.02  mean 49.60
+512-128       20M: bg 49.71  nack 49.91  mean 49.81
+256-256       24M: bg 48.89  nack 49.48  mean 49.19
+256-128       24M: bg 49.52  nack 49.69  mean 49.61
+256-256-256   24M: bg 49.96  nack 50.19  mean 50.08
+512-128       24M: bg 49.54  nack 50.34  mean 49.94
+256-256       28M: bg 49.04  nack 49.79  mean 49.41
+256-128       28M: bg 49.02  nack 49.98  mean 49.50
+256-256-256   28M: bg 49.40  nack 50.08  mean 49.74
+512-128       28M: bg 49.35  nack 50.09  mean 49.72   -> plateau
+256-256       32M: bg 49.20  nack 50.21  mean 49.70
+256-128       32M: bg 49.50  nack 49.63  mean 49.56
+256-256-256   32M: bg 49.55  nack 50.32  mean 49.94
+256-256       36M: bg 49.41  nack 50.28  mean 49.84
+256-128       36M: bg 49.13  nack 49.71  mean 49.42   -> plateau
+256-256-256   36M: bg 49.81  nack 50.51  mean 50.16   -> plateau
+256-256       40M: bg 49.41  nack 50.65  mean 50.03
+256-256       44M: bg 49.56  nack 50.67  mean 50.12
+256-256       48M: bg 49.36  nack 50.41  mean 49.88   -> plateau
+512-256        4M: bg 48.05  nack 47.70  mean 47.88
+756            4M: bg 45.37  nack 45.49  mean 45.43
+512-256        8M: bg 48.62  nack 48.85  mean 48.73
+756            8M: bg 46.53  nack 46.35  mean 46.44
+512-256       12M: bg 48.93  nack 49.61  mean 49.27
+756           12M: bg 47.20  nack 46.89  mean 47.05
+512-256       16M: bg 49.10  nack 49.94  mean 49.52
+756           16M: bg 47.39  nack 47.19  mean 47.29
+512-256       20M: bg 49.49  nack 50.46  mean 49.98
+756           20M: bg 47.81  nack 47.30  mean 47.55
+756          stopped at 20M (no use continuing)
+512-256       20M: bg 49.61  nack 50.46  mean 50.03   (again, with the bearoff database; training uses it from here on)

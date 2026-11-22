@@ -1,4 +1,8 @@
 pub mod evaluator;
+pub mod bearoff;
+pub mod encoding;
+pub mod neural_net;
+pub mod td_training;
 pub mod fast_hash;
 pub mod transposition_table;
 pub mod move_generator;
@@ -12,7 +16,8 @@ pub mod rust_analyzer;
 pub use position::{Position, Player};
 pub use utils::Utils;
 pub use rust_analyzer::RustAnalyzer;
-pub use evaluator::Evaluator;
+pub use evaluator::{Evaluator, TerminalEvaluator, PipCountEvaluator};
+pub use neural_net::{NeuralNet, NeuralNetEvaluator};
 
 #[cfg(feature = "extension-module")]
 use pyo3::prelude::*;
@@ -143,12 +148,7 @@ fn clear_cache() {
 #[cfg(feature = "extension-module")]
 #[pyfunction]
 fn set_cache_size(megabytes: usize) {
-    ANALYZER.with(|a| {
-        let mut analyzer = a.borrow_mut();
-        // Free the old cache before allocating the new one, so both never exist at once.
-        *analyzer = RustAnalyzer::with_cache_mb(1);
-        *analyzer = RustAnalyzer::with_cache_mb(megabytes.max(1));
-    });
+    ANALYZER.with(|a| a.borrow_mut().set_cache_mb(megabytes));
 }
 
 /// Memory reserved for the engine's cache on this thread, in MB (rounded to the nearest MB).
@@ -158,14 +158,18 @@ fn cache_size_mb() -> usize {
     ANALYZER.with(|a| (a.borrow().cache_size_bytes() + (1 << 19)) >> 20)
 }
 
-/// Play a complete game between two Rust engines, entirely in Rust.
+/// Play a complete game between two Rust engines, entirely in Rust, from the backgammon or
+/// (`nackgammon=True`) the nackgammon starting position.
 /// Returns (winner, me_checkers, opp_checkers, turns), with winner 1 = Me, 0 = Opponent.
 /// Cannot be interrupted once started.
 #[cfg(feature = "extension-module")]
 #[pyfunction]
-fn play_game(py: Python<'_>, me_depth: u32, opponent_depth: u32, seed: u64) -> PyResult<(u8, Vec<u8>, Vec<u8>, u32)> {
+#[pyo3(signature = (me_depth, opponent_depth, seed, nackgammon=false))]
+fn play_game(py: Python<'_>, me_depth: u32, opponent_depth: u32, seed: u64, nackgammon: bool)
+             -> PyResult<(u8, Vec<u8>, Vec<u8>, u32)> {
+    let variant = if nackgammon { game::Variant::Nackgammon } else { game::Variant::Backgammon };
     let result = py.allow_threads(move || {
-        ANALYZER.with(|a| game::play_game(&a.borrow(), me_depth, opponent_depth, &mut game::Dice::new(seed)))
+        ANALYZER.with(|a| game::play_game(&a.borrow(), variant, me_depth, opponent_depth, &mut game::Dice::new(seed)))
     });
     let result = result.map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
     let pos = &result.final_position;
@@ -173,6 +177,49 @@ fn play_game(py: Python<'_>, me_depth: u32, opponent_depth: u32, seed: u64) -> P
     let opp_out: Vec<u8> = (0..26).map(|i| pos.get_checkers(Player::Opponent, i).unwrap()).collect();
     let winner = if result.winner == Player::Me { 1u8 } else { 0u8 };
     Ok((winner, me_out, opp_out, result.turns))
+}
+
+/// Use the neural net in the weight file at `path` as the engine's evaluator, on this thread
+/// (like the cache, the analyzer is per thread). Returns a description of the net.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+fn load_network(path: &str) -> PyResult<String> {
+    let net = NeuralNet::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let description = net.description();
+    ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(NeuralNetEvaluator { net })));
+    Ok(description)
+}
+
+/// Use the two-sided bearoff database at `path` (see bearoff.rs) for exact values of bearoff
+/// positions on this thread, or none (`None`). The file is memory-mapped, so its pages are shared
+/// by all threads and processes using it. Returns a description.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+#[pyo3(signature = (path))]
+fn load_bearoff(path: Option<&str>) -> PyResult<String> {
+    let db = match path {
+        Some(path) => Some(std::sync::Arc::new(
+            bearoff::BearoffDb::open(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?)),
+        None => None,
+    };
+    let description = db.as_ref().map_or("no bearoff database".to_string(),
+                                         |db| format!("two-sided bearoff database 6x{}", db.checkers()));
+    ANALYZER.with(|a| a.borrow_mut().set_bearoff(db));
+    Ok(description)
+}
+
+/// Go back to the placeholder evaluator on this thread.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+fn use_placeholder_evaluator() {
+    ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(TerminalEvaluator)));
+}
+
+/// Description of the evaluator in use on this thread.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+fn evaluator_name() -> String {
+    ANALYZER.with(|a| a.borrow().evaluator().name())
 }
 
 #[cfg(feature = "extension-module")]
@@ -184,6 +231,10 @@ fn backgammon_rust(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(play_game, m)?)?;
     m.add_function(wrap_pyfunction!(set_cache_size, m)?)?;
     m.add_function(wrap_pyfunction!(cache_size_mb, m)?)?;
+    m.add_function(wrap_pyfunction!(load_network, m)?)?;
+    m.add_function(wrap_pyfunction!(load_bearoff, m)?)?;
+    m.add_function(wrap_pyfunction!(use_placeholder_evaluator, m)?)?;
+    m.add_function(wrap_pyfunction!(evaluator_name, m)?)?;
     Ok(())
 }
 #[cfg(test)]

@@ -6,19 +6,6 @@ from backgammon.game.utils import Utils
 
 class UtilsTest(unittest.TestCase):
 
-    def test_pipcount_initial_position(self):
-        """Test pipcount calculation for both players in starting position."""
-        position = Position()
-        position.setup_starting_position()
-
-        expected_pipcount = 167
-
-        white_pipcount = Utils.pipcount(position, Player.OPPONENT)
-        black_pipcount = Utils.pipcount(position, Player.ME)
-
-        self.assertEqual(white_pipcount, expected_pipcount)
-        self.assertEqual(black_pipcount, expected_pipcount)
-
     def test_can_move_basic(self):
         """Test basic move validation."""
         position = Position()

@@ -9,6 +9,7 @@ class BoardMap:
     BROWN_DARK = (139, 69, 19)
     WHITE = (255, 255, 255)
     RED = (220, 20, 60)
+    RED_LIGHT = (255, 120, 120)   # readable red text on the dark border
     BLACK = (0, 0, 0)
     BORDER = (101, 67, 33)
     HIGHLIGHT_ME = (0, 255, 0)
@@ -186,7 +187,7 @@ class BoardMap:
 
                 if point == 0:
                     for checker_num in range(1, self.MAX_VISIBLE_CHECKERS + 1):
-                        if player == Player.ME:
+                        if player == Player.OPPONENT:
                             y = self.board_y + self.checker_radius + (checker_num - 1) * self.checker_radius // 2
                         else:
                             y = self.board_y + self.board_height - self.checker_radius - (checker_num - 1) * self.checker_radius // 2

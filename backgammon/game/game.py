@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 from backgammon.game.analyzer_proxy import AnalyzerProxy
 from backgammon.game.evaluator import CHECKERS_PER_PLAYER
-from backgammon.game.position import Position, Player
+from backgammon.game.position import GameVariant, Position, Player
 from backgammon.game.settings import Analyzer
 from backgammon.game.utils import Utils
 
@@ -18,11 +18,13 @@ class PlayerType(Enum):
     HUMAN = "Human"
     PYTHON_ENGINE = "Python engine"
     RUST_ENGINE = "Rust engine"
+    BGSAGE_ENGINE = "bgsage engine"
 
     @property
     def engine(self) -> Optional[Analyzer]:
         return {PlayerType.PYTHON_ENGINE: Analyzer.PYTHON,
-                PlayerType.RUST_ENGINE: Analyzer.RUST}.get(self)
+                PlayerType.RUST_ENGINE: Analyzer.RUST,
+                PlayerType.BGSAGE_ENGINE: Analyzer.BGSAGE}.get(self)
 
     @property
     def is_engine(self) -> bool:
@@ -40,6 +42,7 @@ class GameConfig:
     me: PlayerConfig = field(default_factory=PlayerConfig)
     opponent: PlayerConfig = field(default_factory=lambda: PlayerConfig(PlayerType.RUST_ENGINE))
     show_engine_game: bool = True  # only relevant when both players are engines
+    variant: GameVariant = GameVariant.BACKGAMMON
 
     def player(self, player: Player) -> PlayerConfig:
         return self.me if player == Player.ME else self.opponent
@@ -65,7 +68,8 @@ def format_move(move: Move) -> str:
 
 
 class Game:
-    """A single game of backgammon (no doubling cube, no gammons). Contains no UI code.
+    """A single game of backgammon or nackgammon (no doubling cube, no gammons). Contains no UI
+    code.
 
     Flow: start() does the opening roll; then, as long as the game is not over, the side to move
     plays a move with the current dice via play() (or play_position() for engines), after which
@@ -78,7 +82,7 @@ class Game:
         self.rng = rng or random.Random()
         self.log = log
         self.position = Position()
-        self.position.setup_starting_position()
+        self.position.setup_starting_position(config.variant)
         self.dice: Optional[tuple[int, int]] = None
         self.winner: Optional[Player] = None
         self.turns = 0
@@ -163,15 +167,27 @@ class Game:
             self._set_dice((self._roll_die(), self._roll_die()))
 
     def find_move(self, position_after: Position) -> Move:
-        """The legal move that leads to position_after (e.g. as chosen by an engine)."""
+        """The legal move that leads to position_after (e.g. as chosen by an engine).
+
+        When position_after bears off the mover's last checker, any legal move that does the same
+        is returned: without gammons all winning moves are equal. Engines differ on whether the
+        last checker may come off with one die when both dice could be played (e.g. bgsage plays
+        2/off with 4-1, where our move generator requires 2/1/off)."""
         legal = self.legal_moves()
         if not legal:
             return ()
+        mover = self.current_player
+        wins = position_after.get_checkers(mover, 0) == CHECKERS_PER_PLAYER
+        winning_move = None
         for move in legal:
             result = Utils.apply_move(self.position, move)
             if (result.me_checkers == position_after.me_checkers and
                     result.opponent_checkers == position_after.opponent_checkers):
                 return move
+            if wins and winning_move is None and result.get_checkers(mover, 0) == CHECKERS_PER_PLAYER:
+                winning_move = move
+        if winning_move is not None:
+            return winning_move
         raise ValueError("The given position is not reachable with a legal move")
 
     def engine_move(self) -> Move:
@@ -192,7 +208,8 @@ class Game:
         if not self.runs_in_rust:
             raise ValueError("Only a hidden Rust engine vs Rust engine game can run in Rust")
         winner, position, turns = AnalyzerProxy.play_rust_game(
-            self.config.me.depth, self.config.opponent.depth, seed)
+            self.config.me.depth, self.config.opponent.depth, seed,
+            nackgammon=self.config.variant == GameVariant.NACKGAMMON)
         self.position = position
         self.turns = turns
         self.dice = None

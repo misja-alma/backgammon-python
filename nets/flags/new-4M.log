@@ -1,0 +1,4 @@
+Training 257-128-128-1 td-flags-v1, 2000000 games for 2000000 Backgammon games: Sgd, alpha 0.01, lambda 0.7, seed 62, 12 threads -> nets/flags/new-4M.bgnet
+  1000000 games (  3000000 total)  alpha 0.01000    9080 games/s   56.9 turns/game  vs pip count  99.4%  saved
+  2000000 games (  4000000 total)  alpha 0.01000    9035 games/s   57.0 turns/game  vs pip count  99.1%  saved
+average of the last 500000 games saved to nets/flags/new-4M-avg.bgnet  vs pip count  99.7%

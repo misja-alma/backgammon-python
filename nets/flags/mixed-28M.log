@@ -1,0 +1,4 @@
+Training 257-128-128-1 td-flags-v1, 26000000 games for 2000000 mixed games: Sgd, alpha 0.01, lambda 0.7, seed 74, 12 threads -> nets/flags/mixed-28M.bgnet
+  1000000 games ( 27000000 total)  alpha 0.01000    7984 games/s   62.3 turns/game  vs pip count  99.5%  saved
+  2000000 games ( 28000000 total)  alpha 0.01000    7946 games/s   62.3 turns/game  vs pip count  99.6%  saved
+average of the last 500000 games saved to nets/flags/mixed-28M-avg.bgnet  vs pip count  99.5%

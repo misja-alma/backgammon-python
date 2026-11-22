@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from backgammon.game.position import Position, Player
-from backgammon.game.analyzer_proxy import AnalyzerProxy
+from backgammon.game.analyzer_proxy import AnalyzerProxy, PROJECT_ROOT
 from backgammon.game.settings import Settings, Analyzer
 
 
@@ -145,6 +145,52 @@ class AnalyzerTest(unittest.TestCase):
         position.set_checkers(Player.OPPONENT, 17, 2)  # the same point as ME's 8
         with self.assertRaises(ValueError):
             AnalyzerProxy.equity(position, Player.ME, Analyzer.RUST, 1)
+
+
+class RustNetworkTest(unittest.TestCase):
+    def tearDown(self):
+        AnalyzerProxy.set_rust_network(None)
+
+    def test_placeholder(self):
+        self.assertIn("placeholder", AnalyzerProxy.set_rust_network(None))
+
+    def test_missing_file(self):
+        with self.assertRaises(ValueError):
+            AnalyzerProxy.set_rust_network("nets/does-not-exist.bgnet")
+
+    def test_bad_file(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".bgnet") as f:
+            f.write(b"not a net\n")
+            f.flush()
+            with self.assertRaises(ValueError):
+                AnalyzerProxy.set_rust_network(f.name)
+
+
+class RustBearoffTest(unittest.TestCase):
+    def tearDown(self):
+        AnalyzerProxy.set_rust_bearoff(None)
+
+    def test_none(self):
+        self.assertIn("no bearoff", AnalyzerProxy.set_rust_bearoff(None))
+
+    def test_missing_file(self):
+        with self.assertRaises(ValueError):
+            AnalyzerProxy.set_rust_bearoff("data/does-not-exist.bd")
+
+    @unittest.skipUnless((PROJECT_ROOT / Settings.rust_bearoff_db).exists(), "bearoff database not built")
+    def test_exact_bearoff_value(self):
+        self.assertIn("6x15", AnalyzerProxy.set_rust_bearoff(Settings.rust_bearoff_db))
+        # One checker each on the 6-point and the 1-point: the mover wins with 27 of 36 rolls.
+        position = Position()
+        position.set_checkers(Player.ME, 6, 1)
+        position.set_checkers(Player.ME, 0, 14)
+        position.set_checkers(Player.OPPONENT, 1, 1)
+        position.set_checkers(Player.OPPONENT, 0, 14)
+        position.set_turn(Player.ME)
+        for depth in (0, 1, 2):
+            equity = AnalyzerProxy.equity(position, Player.ME, Analyzer.RUST, depth)
+            self.assertAlmostEqual(2 * 27 / 36 - 1, equity, places=4)
 
 
 if __name__ == '__main__':

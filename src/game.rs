@@ -18,7 +18,7 @@ impl Dice {
         Dice { state: seed }
     }
 
-    fn next_u64(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9e3779b97f4a7c15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
@@ -29,6 +29,44 @@ impl Dice {
     /// A die from 1 to 6 (the modulo bias over 2^64 values is negligible).
     pub fn roll(&mut self) -> i32 {
         (self.next_u64() % 6) as i32 + 1
+    }
+}
+
+/// Opening roll: one die each, ties rerolled; the higher die starts and plays both dice.
+/// Returns (starting player, die1, die2).
+pub fn opening_roll(dice: &mut Dice) -> (Player, i32, i32) {
+    let (me_die, opponent_die) = loop {
+        let (a, b) = (dice.roll(), dice.roll());
+        if a != b {
+            break (a, b);
+        }
+    };
+    let starter = if me_die > opponent_die { Player::Me } else { Player::Opponent };
+    (starter, me_die.max(opponent_die), me_die.min(opponent_die))
+}
+
+/// Which starting position a game uses; the rules are otherwise the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Variant {
+    /// 2 on the 24 point, 5 on the 13, 3 on the 8, 5 on the 6.
+    Backgammon,
+    /// Like backgammon, with one checker each from the 13 and 6 points moved to the 23 point:
+    /// 2 on the 24, 2 on the 23, 4 on the 13, 3 on the 8, 4 on the 6.
+    Nackgammon,
+}
+
+impl Variant {
+    pub fn starting_position(self) -> EnginePosition {
+        let mut position = EnginePosition::new();
+        position.setup_starting_position();
+        if self == Variant::Nackgammon {
+            for player in [Player::Me, Player::Opponent] {
+                for (point, count) in [(23, 2), (13, 4), (6, 4)] {
+                    position.set_checkers(player, point, count).expect("valid nackgammon layout");
+                }
+            }
+        }
+        position
     }
 }
 
@@ -43,21 +81,15 @@ pub struct GameResult {
 /// then alternating turns until one player has borne off all checkers. No doubling cube.
 pub fn play_game(
     analyzer: &RustAnalyzer<EnginePosition>,
+    variant: Variant,
     me_depth: u32,
     opponent_depth: u32,
     dice: &mut Dice,
 ) -> Result<GameResult, String> {
-    let mut position = EnginePosition::new();
-    position.setup_starting_position();
+    let mut position = variant.starting_position();
 
-    let (me_die, opponent_die) = loop {
-        let (a, b) = (dice.roll(), dice.roll());
-        if a != b {
-            break (a, b);
-        }
-    };
-    position.set_turn(if me_die > opponent_die { Player::Me } else { Player::Opponent });
-    let (mut die1, mut die2) = (me_die.max(opponent_die), me_die.min(opponent_die));
+    let (starter, mut die1, mut die2) = opening_roll(dice);
+    position.set_turn(starter);
 
     for turn in 1..=MAX_TURNS {
         let mover = position.get_turn();
@@ -101,9 +133,9 @@ mod tests {
 
     #[test]
     fn test_game_finishes_with_a_winner() {
-        for seed in 0..5 {
+        for (seed, variant) in (0..6).zip([Variant::Backgammon, Variant::Nackgammon].into_iter().cycle()) {
             let analyzer = RustAnalyzer::with_cache_mb(4);
-            let result = play_game(&analyzer, 0, 0, &mut Dice::new(seed)).unwrap();
+            let result = play_game(&analyzer, variant, 0, 0, &mut Dice::new(seed)).unwrap();
             let loser = result.winner.other_player();
             assert_eq!(result.final_position.get_checkers(result.winner, 0).unwrap(), 15);
             assert!(result.final_position.get_checkers(loser, 0).unwrap() < 15);
@@ -115,10 +147,24 @@ mod tests {
 
     #[test]
     fn test_same_seed_gives_same_game() {
-        let a = play_game(&RustAnalyzer::with_cache_mb(4), 0, 0, &mut Dice::new(7)).unwrap();
-        let b = play_game(&RustAnalyzer::with_cache_mb(4), 0, 0, &mut Dice::new(7)).unwrap();
+        let a = play_game(&RustAnalyzer::with_cache_mb(4), Variant::Backgammon, 0, 0, &mut Dice::new(7)).unwrap();
+        let b = play_game(&RustAnalyzer::with_cache_mb(4), Variant::Backgammon, 0, 0, &mut Dice::new(7)).unwrap();
         assert_eq!(a.winner, b.winner);
         assert_eq!(a.turns, b.turns);
         assert!(a.final_position == b.final_position);
+    }
+
+    #[test]
+    fn test_nackgammon_starting_position() {
+        let position = Variant::Nackgammon.starting_position();
+        for player in [Player::Me, Player::Opponent] {
+            let layout: Vec<u8> = (0..26).map(|p| position.get_checkers(player, p).unwrap()).collect();
+            let mut expected = vec![0u8; 26];
+            for (point, count) in [(24, 2), (23, 2), (13, 4), (8, 3), (6, 4)] {
+                expected[point] = count;
+            }
+            assert_eq!(layout, expected);
+        }
+        assert_eq!(Variant::Backgammon.starting_position().get_checkers(Player::Me, 23).unwrap(), 0);
     }
 }
