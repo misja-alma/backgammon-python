@@ -40,25 +40,30 @@ class AnalyzerProxy:
 
     @classmethod
     def equity(cls, position: Position, player: Player,
-               engine: Optional[Analyzer] = None, depth: Optional[int] = None) -> float:
-        """Equity of the position for player, in [-1, 1]."""
+               engine: Optional[Analyzer] = None, depth: Optional[int] = None, money: bool = False) -> float:
+        """Equity of the position for player: in [-1, 1] at double match point, in [-3, 3] with
+        money=True (cubeless money, gammons and backgammons count; Rust engine and bgsage)."""
         engine, depth = cls._resolve(engine, depth)
         if engine == Analyzer.RUST:
+            backgammon_rust.set_money_scoring(money)
             return backgammon_rust.equity(
                 *cls._rust_position_args(position),
                 cls._player_to_int(player),
                 depth,
             )
         if engine == Analyzer.BGSAGE:
-            return BgsageAnalyzer.equity(position, player, depth)
+            return BgsageAnalyzer.equity(position, player, depth, money)
         return PythonAnalyzer.equity(position, player, depth)
 
     @classmethod
     def best_move(cls, position: Position, die1: int, die2: int,
-                  engine: Optional[Analyzer] = None, depth: Optional[int] = None):
-        """Best move for the side to move: (position after the move, equity for the mover)."""
+                  engine: Optional[Analyzer] = None, depth: Optional[int] = None, money: bool = False):
+        """Best move for the side to move: (position after the move, equity for the mover). With
+        money=True the Rust engine and bgsage play for cubeless money (gammons count); the Python
+        engine always plays for double match point."""
         engine, depth = cls._resolve(engine, depth)
         if engine == Analyzer.RUST:
+            backgammon_rust.set_money_scoring(money)
             result = backgammon_rust.best_move(
                 *cls._rust_position_args(position),
                 die1,
@@ -75,17 +80,44 @@ class AnalyzerProxy:
             new_pos.set_cube(position.cube_value, position.cube_owner)
             return new_pos, equity
         if engine == Analyzer.BGSAGE:
-            return BgsageAnalyzer.best_move(position, die1, die2, depth)
+            return BgsageAnalyzer.best_move(position, die1, die2, depth, money)
         return PythonAnalyzer.best_move(position, die1, die2, depth)
+
+    @classmethod
+    def analyze_moves(cls, position: Position, die1: int, die2: int, depth: int, money: bool = False) -> list:
+        """Every move with the dice, best first, by the Rust engine searching depth roll levels:
+        (position after the move, equity for the mover, [win, win gammon, win backgammon,
+        lose gammon, lose backgammon] for the mover, NaN where the net doesn't know them)."""
+        backgammon_rust.set_money_scoring(money)
+        result = []
+        for me_checkers, opp_checkers, turn, equity, probs in backgammon_rust.analyze_moves(
+                *cls._rust_position_args(position), die1, die2, depth):
+            after = Position()
+            after.me_checkers = list(me_checkers)
+            after.opponent_checkers = list(opp_checkers)
+            after.set_turn(Player.ME if turn == 1 else Player.OPPONENT)
+            after.set_cube(position.cube_value, position.cube_owner)
+            result.append((after, equity, list(probs)))
+        return result
+
+    @classmethod
+    def analyze_position(cls, position: Position, depth: int, money: bool = False) -> tuple[float, list]:
+        """The side on roll's equity and outcome probabilities (as in analyze_moves) before it
+        rolls, by the Rust engine searching depth roll levels."""
+        backgammon_rust.set_money_scoring(money)
+        equity, probs = backgammon_rust.analyze_position(*cls._rust_position_args(position), depth)
+        return equity, list(probs)
 
     @staticmethod
     def play_rust_game(me_depth: int, opponent_depth: int, seed: int,
-                       nackgammon: bool = False) -> tuple[Player, Position, int]:
+                       nackgammon: bool = False, money: bool = False) -> tuple[Player, Position, int]:
         """Play a complete Rust-engine-vs-Rust-engine game inside Rust, from the backgammon or
-        (nackgammon=True) the nackgammon starting position.
+        (nackgammon=True) the nackgammon starting position, both engines playing for cubeless
+        money with money=True, else for double match point.
 
         Cannot be interrupted. Returns (winner, final position, number of turns).
         """
+        backgammon_rust.set_money_scoring(money)
         winner, me_checkers, opp_checkers, turns = backgammon_rust.play_game(me_depth, opponent_depth, seed, nackgammon)
         position = Position()
         position.me_checkers = list(me_checkers)

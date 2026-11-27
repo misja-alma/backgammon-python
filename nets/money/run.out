@@ -1,0 +1,3 @@
+--- money net 256-256 from scratch; decision benchmark: money loss in millipoints per decision (money set; pasko), dmp loss in winning-chance points; [DMP 256-256 at the same games: money loss]
+256-256   4M: money best 71.29%  loss 6.854  pasko 11.087  atta 6.582 prim 7.841 anch 5.878 raci 7.455 | dmp best 69.69%  loss 0.267   [DMP net: 8.898]
+256-256   8M: money best 72.77%  loss 6.100  pasko 10.349  atta 5.851 prim 6.940 anch 5.518 raci 6.374 | dmp best 70.55%  loss 0.250   [DMP net: 8.477]

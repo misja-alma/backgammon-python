@@ -79,25 +79,31 @@ class BgsageAnalyzer:
         return depth + 1
 
     @classmethod
-    def equity(cls, position: Position, player: Player, depth: int) -> float:
-        """Equity of the position for player, in [-1, 1] (2 * winning chance - 1)."""
+    def equity(cls, position: Position, player: Player, depth: int, money: bool = False) -> float:
+        """Equity of the position for player, in [-1, 1] (2 * winning chance - 1), or with
+        money=True the cubeless money equity (gammons count)."""
         on_roll = position.get_turn()
         if Evaluator.is_game_over(position):
             equity_on_roll = Evaluator.evaluate(position)
+            if money:
+                from backgammon.game.game import WinType   # here: game imports this module
+                winner = on_roll if equity_on_roll > 0 else on_roll.other_player()
+                equity_on_roll *= WinType.of(position, winner).value
         else:
             # The position before on_roll's roll is the position right after the other side moved.
             just_moved = on_roll.other_player()
             answer = cls._request({"cmd": "evaluate", "board": cls.to_board(position, just_moved),
-                                   "ply": cls._ply(depth)})
+                                   "ply": cls._ply(depth), "money": money})
             equity_on_roll = -answer["equity"]
         return equity_on_roll if player == on_roll else -equity_on_roll
 
     @classmethod
-    def best_move(cls, position: Position, die1: int, die2: int, depth: int):
-        """Best move for the side to move: (position after the move, equity for the mover)."""
+    def best_move(cls, position: Position, die1: int, die2: int, depth: int, money: bool = False):
+        """Best move for the side to move: (position after the move, equity for the mover), for
+        double match point or (money=True) cubeless money."""
         mover = position.get_turn()
         answer = cls._request({"cmd": "best_move", "board": cls.to_board(position, mover),
-                               "dice": [die1, die2], "ply": cls._ply(depth)})
+                               "dice": [die1, die2], "ply": cls._ply(depth), "money": money})
         new_pos = cls.from_board(answer["board"], mover, mover.other_player())
         new_pos.set_cube(position.cube_value, position.cube_owner)
         return new_pos, answer["equity"]

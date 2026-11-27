@@ -20,6 +20,9 @@ class BoardMap:
     # Checker display
     MAX_VISIBLE_CHECKERS = 5
 
+    # Share of the window width for the analysis panel on the left
+    PANEL_FRACTION = 0.24
+
     # Doubling cube
     MAX_CUBE_VALUE = 64
 
@@ -48,6 +51,12 @@ class BoardMap:
         self.submenu_item_height = round(25 * sy)
         self.submenu_text_x_offset = round(5 * sx)   # x padding inside submenu items
 
+        # Analysis panel: a column on the left, below the menu bar; the board takes the rest.
+        self.panel_width = round(width * self.PANEL_FRACTION)
+        self.panel_x = 0
+        self.panel_y = self.menu_height
+        self.panel_height = height - self.menu_height
+
         # Board
         # board_margin is the spacing reserved around the board: above it (menu + labels), below it
         # (labels + text area) and at its sides (cube, turn arrow).
@@ -66,7 +75,7 @@ class BoardMap:
 
         # Space for the board: between the side margins horizontally, and vertically between the
         # top margin and the point labels that sit just above the text area.
-        available_width = width - 2 * self.board_margin
+        available_width = width - self.panel_width - 2 * self.board_margin
         available_height = self.text_area_y - 2 * self.label_margin - self.board_margin
 
         # Points and checkers — all sizes derive from point_width, which is the largest value for
@@ -89,8 +98,8 @@ class BoardMap:
             # Height is the constraint: use exactly the space the points need.
             self.board_width = 14 * self.point_width
 
-        # Board origin: centered horizontally, directly below the top margin vertically.
-        self.board_x = (width - self.board_width) // 2
+        # Board origin: centered horizontally right of the panel, directly below the top margin.
+        self.board_x = self.panel_width + (width - self.panel_width - self.board_width) // 2
         self.board_y = self.board_margin
 
         # Fixed x positions

@@ -21,7 +21,10 @@ def main():
                     running = False
                 else:
                     board.handle_key_press(event.key)
-            elif event.type in (pygame.MOUSEWHEEL, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+            elif event.type == pygame.MOUSEWHEEL:
+                if not board.analysis_panel.handle_wheel(event.y):
+                    board.text_area.handle_event(event)
+            elif event.type in (pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
                 board.text_area.handle_event(event)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if board.text_area.handle_event(event):
@@ -35,6 +38,8 @@ def main():
                 if not (is_left_click or is_right_click):
                     continue
                 if board.handle_menu_click(event.pos):
+                    continue
+                if is_left_click and board.handle_panel_click(event.pos):
                     continue
 
                 if board.is_game_running:

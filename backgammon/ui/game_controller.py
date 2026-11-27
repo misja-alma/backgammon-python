@@ -14,7 +14,11 @@ class GameController:
     """Drives a Game from the pygame main loop without blocking it.
 
     update() is called every frame. Engine moves are computed on the AnalysisWorker thread;
-    human moves are entered by clicking (click a checker, then its destination). A game between
+    human moves are entered by clicking: a click on a checker moves it by the left die (or, when
+    that can't be played, by the other one); after one die is played, the next click uses the
+    other. Doubles: every click moves a checker by the die. A right click, or a click on the dice,
+    swaps the dice. When all dice are played, a click on the dice confirms the move and a right
+    click takes it back completely. A game between
     two engines that is not displayed runs completely on the worker thread.
 
     Each game gets a generation number. Results from the worker that arrive after the game was
@@ -33,7 +37,8 @@ class GameController:
         self._pending = None            # (generation, Future) of the running worker task
         self._next_action_at = 0.0
         self.move_builder: Optional[MoveBuilder] = None
-        self.selected_point: Optional[int] = None   # source point of the human's next step
+        self.selected_point: Optional[int] = None   # (not used: checkers move by die)
+        self.dice_order: Optional[list[int]] = None   # the human's dice as shown, the left one first
         self._unstoppable = False       # the running game is played inside Rust
         self._final_position: Optional[Position] = None
 
@@ -85,8 +90,10 @@ class GameController:
         # A hidden game logs only its outcome, not hundreds of moves.
         self.game = Game(config, rng=rng, log=(lambda message: None) if hidden else Logger.log)
         self._start_position = copy.deepcopy(self.game.position)
-        # Each variant has its own net; the switch is queued before any engine move.
-        self.worker.use_rust_network(Settings.rust_network_for(config.variant)).add_done_callback(self._log_network)
+        # Each variant and scoring (double match point or money) has its own net; the switch is
+        # queued before any engine move.
+        self.worker.use_rust_network(Settings.rust_network_for(config.variant, config.dmp)).add_done_callback(
+            self._log_network)
 
         if self.game.runs_in_rust:
             # Rust plays the whole game, opening roll included; Python only waits for the result.
@@ -150,7 +157,8 @@ class GameController:
             if now >= self._next_action_at:
                 self._play(())
         elif self.move_builder is None:
-            self.move_builder = MoveBuilder(game.legal_moves())
+            self.move_builder = MoveBuilder(game.legal_moves(), game.dice)
+            self.dice_order = sorted(game.dice, reverse=True)   # high left, low right
 
     def _collect_worker_result(self) -> bool:
         """Handle a finished worker task. Returns True if one was handled this frame."""
@@ -174,6 +182,7 @@ class GameController:
     def _play(self, move) -> None:
         self.game.play(move)
         self.move_builder = None
+        self.dice_order = None
         self.selected_point = None
         if not self.game.is_over:
             delay = self.ENGINE_MOVE_DELAY if self.game.current_player_config.type.is_engine else self.PASS_DELAY
@@ -183,7 +192,7 @@ class GameController:
         """The game is over: report the winner (displayed games already logged it) and stop."""
         if self.is_hidden:
             if self.game.is_over:
-                Logger.log(f"{player_name(self.game.winner)} wins after {self.game.turns} turns")
+                Logger.log(f"{self.game.result_text()} after {self.game.turns} turns")
         self._final_position = self.game.position
         self._unstoppable = False
         self.game = None
@@ -193,37 +202,70 @@ class GameController:
     # --- human input ---
 
     def handle_click(self, point: Optional[int], is_left_click: bool) -> None:
-        """A click on a board point (from the current player's perspective) during a human turn.
-
-        Left click: select a checker to move, then click its destination. Right click: cancel the
-        selection, or undo the last step if nothing is selected.
-        """
+        """A click on the board (point from the current player's perspective, None outside the
+        points) during a human turn. Left click on a checker: move it by the left die, or by the
+        other die when the left one can't be played with it. Right click: swap the dice, or when
+        all dice are played, take the whole move back."""
         if not self.is_human_turn or self.move_builder is None:
             return
         builder = self.move_builder
-
         if not is_left_click:
-            if self.selected_point is not None:
-                self.selected_point = None
+            if builder.is_complete and builder.half_moves:
+                builder.reset()
             else:
-                builder.undo()
+                self.swap_dice()
             return
-        if point is None:
+        if point is None or builder.is_complete:
             return
+        remaining = builder.remaining_dice()
+        for die in sorted(set(remaining), key=lambda d: self.dice_order.index(d)):
+            if builder.try_step(point, die):
+                return
 
-        if self.selected_point is None:
-            if builder.can_move_from(point):
-                self.selected_point = point
+    def click_dice(self) -> None:
+        """A click on the dice during a human turn: confirm the move when all dice are played,
+        otherwise swap the dice."""
+        if not self.is_human_turn or self.move_builder is None:
             return
-
-        if builder.try_move(self.selected_point, point):
-            self.selected_point = None
-            if builder.is_complete:
-                self._play(builder.move)
-        elif builder.can_move_from(point):
-            self.selected_point = point   # clicked another movable checker: select that instead
+        if self.move_builder.is_complete:
+            self._play(self.move_builder.move)
         else:
-            self.selected_point = None
+            self.swap_dice()
+
+    def swap_dice(self) -> None:
+        if self.dice_order is not None and not self.move_builder.is_complete:
+            self.dice_order.reverse()
+
+    def display_dice(self) -> list[tuple[int, bool]]:
+        """The dice to show, left to right, each with whether it has been played. High left and
+        low right, unless the human swapped them; for doubles the right die is played after the
+        first two steps and the left one after four."""
+        game = self.game
+        if game is None or game.dice is None:
+            return []
+        order = self.dice_order if self.dice_order is not None else sorted(game.dice, reverse=True)
+        builder = self.move_builder
+        if builder is None or not self.is_human_turn:
+            return [(d, False) for d in order]
+        used = len(builder.half_moves)
+        if order[0] == order[1]:
+            return [(order[0], used >= 4), (order[1], used >= 2)]
+        left = builder.remaining_dice()
+        shown = []
+        for d in order:
+            if d in left:
+                left.remove(d)
+                shown.append((d, False))
+            else:
+                shown.append((d, True))
+        return shown
+
+    def play_move(self, move) -> bool:
+        """Play a complete legal move for the human on turn (e.g. chosen in the analysis panel)."""
+        if not self.is_human_turn or (move not in self.game.legal_moves() and (move or self.game.legal_moves())):
+            return False
+        self._play(move)
+        return True
 
     def undo(self) -> None:
         if self.is_human_turn and self.move_builder is not None:

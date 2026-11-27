@@ -49,6 +49,19 @@ class AnalyzerTest(unittest.TestCase):
         self.assertEqual(1.0, best_pw)
         self.assertEqual(15, best_pos.get_checkers(Player.ME, 0))
 
+    def test_money_scoring_counts_a_gammon(self):
+        # The Rust engine: ME bears off its last checker while OPPONENT has none off: 1 point at
+        # double match point, a gammon (2 points) for money.
+        position = Position()
+        position.set_turn(Player.ME)
+        position.set_checkers(Player.ME, 1, 1)
+        position.set_checkers(Player.ME, 0, 14)
+        position.set_checkers(Player.OPPONENT, 1, 15)
+        rust = dict(engine=Analyzer.RUST, depth=1)
+        self.assertEqual(1.0, AnalyzerProxy.best_move(position, 2, 1, **rust)[1])
+        self.assertEqual(2.0, AnalyzerProxy.best_move(position, 2, 1, money=True, **rust)[1])
+        self.assertEqual(1.0, AnalyzerProxy.best_move(position, 2, 1, money=False, **rust)[1])
+
     def test_proxy_calls_python_analyzer_equity(self):
         position = Position()
         position.set_turn(Player.ME)

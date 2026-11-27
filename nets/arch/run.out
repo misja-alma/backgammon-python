@@ -48,3 +48,6 @@ baseline 128-128 td-flags mixed 30M: bg 47.93  nack 48.27  mean 48.10
 756           20M: bg 47.81  nack 47.30  mean 47.55
 756          stopped at 20M (no use continuing)
 512-256       20M: bg 49.61  nack 50.46  mean 50.03   (again, with the bearoff database; training uses it from here on)
+512-256       24M: bg 49.39  nack 50.76  mean 50.08
+512-256       28M: bg 49.99  nack 50.93  mean 50.46
+512-256       32M: bg 49.78  nack 50.83  mean 50.30

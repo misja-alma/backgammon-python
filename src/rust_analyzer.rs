@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use crate::bearoff::BearoffDb;
 use crate::transposition_table::TranspositionTable;
-use crate::evaluator::{self, Evaluator, TerminalEvaluator};
+use crate::evaluator::{self, Evaluator, Scoring, TerminalEvaluator};
 use crate::position::{Position, Player};
 use crate::move_generator::MoveGenerator;
 
@@ -26,6 +26,8 @@ pub struct RustAnalyzer<P: Position + Clone> {
     generator: RefCell<MoveGenerator<P>>,
     /// Exact values for bearoff positions (see `set_bearoff`), or None.
     bearoff: Option<Arc<BearoffDb>>,
+    /// What the game is played for (see `set_scoring`).
+    scoring: Scoring,
 }
 
 /// Default size of the analyzer's cache. The app overrides it from its settings
@@ -47,6 +49,7 @@ impl<P: Position + Clone> RustAnalyzer<P> {
             hits: Cell::new(0),
             generator: RefCell::new(MoveGenerator::new()),
             bearoff: None,
+            scoring: Scoring::Dmp,
         }
     }
 
@@ -78,14 +81,33 @@ impl<P: Position + Clone> RustAnalyzer<P> {
         self.bearoff.as_deref()
     }
 
+    /// Play for double match point (every win counts 1, the default) or cubeless money (gammons
+    /// count 2, backgammons 3). Clears the cache.
+    pub fn set_scoring(&mut self, scoring: Scoring) {
+        self.scoring = scoring;
+        self.clear_cache();
+    }
+
+    pub fn scoring(&self) -> Scoring {
+        self.scoring
+    }
+
+    /// The exact value from the bearoff database when it covers the position (for money only once
+    /// no gammon is possible: it knows only winning chances), None otherwise.
+    #[inline]
+    fn bearoff_equity(&self, position: &P) -> Option<f64> {
+        let db = self.bearoff.as_ref()?;
+        if self.scoring == Scoring::Money && evaluator::gammon_possible(position) {
+            return None;
+        }
+        db.equity(position)
+    }
+
     /// The exact value from the bearoff database when it covers the position, else the
     /// evaluator's. (Finished games are covered too, with the same values.)
     #[inline]
     fn static_equity(&self, position: &P) -> f64 {
-        match &self.bearoff {
-            Some(db) => db.equity(position).unwrap_or_else(|| self.evaluator.evaluate(position)),
-            None => self.evaluator.evaluate(position),
-        }
+        self.bearoff_equity(position).unwrap_or_else(|| self.evaluator.evaluate_scored(position, self.scoring))
     }
 
     /// Replace the cache with an empty one of at most `megabytes`, keeping the evaluator.
@@ -148,11 +170,73 @@ impl<P: Position + Clone> RustAnalyzer<P> {
         Some(self.best_move_with_depth(position, die1, die2, max_depth))
     }
 
+    /// The 5 outcome probabilities for the side to move (see `Evaluator::outcome`; NaN where the
+    /// evaluator doesn't know them), where the search stops: exact for finished games and
+    /// bearoff positions (gammons there only once none is possible; at double match point the
+    /// database's winning chance is used anyway, like `static_equity`).
+    fn static_outcome(&self, position: &P) -> [f64; evaluator::MONEY_OUTPUTS] {
+        if let Some(o) = evaluator::terminal_outcome(position) {
+            return o.map(|x| x as f64);
+        }
+        if let Some(db) = &self.bearoff {
+            let no_gammon = !evaluator::gammon_possible(position);
+            if no_gammon || self.scoring == Scoring::Dmp {
+                if let Some(win) = db.win_probability(position) {
+                    let rest = if no_gammon { 0.0 } else { f64::NAN };
+                    return [win, rest, rest, rest, rest];
+                }
+            }
+        }
+        self.evaluator.outcome(position)
+    }
+
+    /// The outcome probabilities for the side to move, searching `depth` roll levels the same way
+    /// as `equity` (every roll's move is the one the search chooses; its probabilities are
+    /// averaged).
+    pub fn outcome_for_turn(&self, position: &P, depth: u32) -> [f64; evaluator::MONEY_OUTPUTS] {
+        if depth == 0 || evaluator::is_game_over(position) || self.bearoff_equity(position).is_some() {
+            return self.static_outcome(position);
+        }
+        let mut total = [0.0; evaluator::MONEY_OUTPUTS];
+        for &(die1, die2) in Self::dice_rolls() {
+            let (child, _) = self.best_move_with_depth(position, die1, die2, depth - 1);
+            let o = evaluator::flip_outcome_f64(&self.outcome_for_turn(&child, depth - 1));
+            let weight = if die1 != die2 { 2.0 } else { 1.0 };
+            for k in 0..evaluator::MONEY_OUTPUTS {
+                total[k] += weight * o[k];
+            }
+        }
+        total.map(|t| t / 36.0)
+    }
+
+    /// Every distinct move with the given dice (the passed position when none is legal), best
+    /// first: (position after the move, equity for the mover, outcome probabilities for the
+    /// mover), searched `depth` roll levels as in `best_move` (equal equities keep the order in
+    /// which `best_move` meets them, so the first is the move it chooses).
+    pub fn analyze_moves(&self, position: &P, die1: i32, die2: i32, depth: u32)
+                         -> Vec<(P, f64, [f64; evaluator::MONEY_OUTPUTS])> {
+        let mut children = self.generator.borrow_mut().legal_positions(position, die1, die2);
+        if children.is_empty() {
+            let mut passed = position.clone();
+            passed.switch_turn();
+            children.push(passed);
+        }
+        let mut moves: Vec<(P, f64, [f64; evaluator::MONEY_OUTPUTS])> = children.into_iter()
+            .map(|child| {
+                let equity = if depth == 0 { -self.static_equity(&child) } else { -self.equity_for_turn(&child, depth) };
+                let outcome = evaluator::flip_outcome_f64(&self.outcome_for_turn(&child, depth));
+                (child, equity, outcome)
+            })
+            .collect();
+        moves.sort_by(|a, b| b.1.total_cmp(&a.1));
+        moves
+    }
+
     fn equity_for_turn(&self, position: &P, depth: u32) -> f64 {
         if depth == 0 || evaluator::is_game_over(position) {
             return self.static_equity(position);
         }
-        if let Some(equity) = self.bearoff.as_ref().and_then(|db| db.equity(position)) {
+        if let Some(equity) = self.bearoff_equity(position) {
             return equity;
         }
 
@@ -270,6 +354,43 @@ mod tests {
         let position = pos(&[(0, 15)], &[(1, 15)], 1);
         assert_eq!(RustAnalyzer::with_cache_mb(4).equity(&position, Player::Me, 3), 1.0);
         assert_eq!(RustAnalyzer::with_cache_mb(4).equity(&position, Player::Opponent, 3), -1.0);
+    }
+
+    #[test]
+    fn test_money_scoring_counts_gammons() {
+        // Me bears off its last checker; Opponent has borne off nothing: a gammon (2 points), and
+        // with a checker on its 20-point (Me's home board) a backgammon (3).
+        let gammon = pos(&[(1, 1), (0, 14)], &[(1, 15)], 1);
+        let backgammon = pos(&[(1, 1), (0, 14)], &[(1, 14), (20, 1)], 1);
+        let mut analyzer = RustAnalyzer::with_cache_mb(4);
+        assert_eq!(analyzer.best_move(&gammon, 2, 1, 0).unwrap().1, 1.0);
+        analyzer.set_scoring(Scoring::Money);
+        assert_eq!(analyzer.best_move(&gammon, 2, 1, 0).unwrap().1, 2.0);
+        assert_eq!(analyzer.best_move(&backgammon, 2, 1, 1).unwrap().1, 3.0);
+        assert_eq!(analyzer.equity(&gammon, Player::Opponent, 2), -2.0);
+    }
+
+    #[test]
+    fn test_analyze_moves_ranks_like_best_move_with_matching_probabilities() {
+        // Me (to move) has checkers on its 3- and 2-points, Opponent one checker on its 1-point.
+        let position = pos(&[(3, 1), (2, 1), (0, 13)], &[(1, 1), (0, 14)], 1);
+        let analyzer = RustAnalyzer::with_cache_mb(4);
+        for depth in 0..3 {
+            let moves = analyzer.analyze_moves(&position, 2, 1, depth);
+            assert!(moves.len() > 1);
+            let (_, best) = analyzer.best_move(&position, 2, 1, depth).unwrap();
+            assert_eq!(moves[0].1, best);
+            for (_, equity, outcome) in &moves {
+                // At double match point the equity is 2 * winning chance - 1.
+                assert!((equity - (2.0 * outcome[0] - 1.0)).abs() < 1e-9, "depth {}: {} vs {:?}", depth, equity, outcome);
+            }
+            assert!(moves.windows(2).all(|w| w[0].1 >= w[1].1));
+        }
+        // No legal move: the passed position.
+        let blocked = pos(&[(25, 1), (0, 14)], &[(1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (0, 3)], 1);
+        let moves = analyzer.analyze_moves(&blocked, 6, 5, 1);
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].0.get_turn(), Player::Opponent);
     }
 
     #[test]

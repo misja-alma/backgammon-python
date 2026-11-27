@@ -1,10 +1,10 @@
 import pygame
 
 from backgammon.game.analysis_worker import AnalysisWorker
-from backgammon.game.evaluator import Evaluator
 from backgammon.game.position import Position, Player
 from backgammon.game.settings import Settings
 from backgammon.logger import Logger
+from backgammon.ui.analysis_panel import AnalysisPanel
 from backgammon.ui.board_map import BoardMap
 from backgammon.ui.game_controller import GameController
 from backgammon.ui.play_setup_dialog import PlaySetupDialog
@@ -20,7 +20,7 @@ class CheckerPosition:
 
 
 class Board:
-    def __init__(self, width=1024, height=768):
+    def __init__(self, width=1340, height=768):
         pygame.init()
         self.map = BoardMap(width, height)
         self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
@@ -31,11 +31,11 @@ class Board:
         self.menus = {
             "Edit": ["Clear Board", "Starting Position"],
             "Play": ["Start...", "Stop"],
-            "Analyze": ["Show equity", "Settings"],
+            "Analyze": ["Analyze", "Settings"],
         }
         self.menu_items = list(self.menus)
         self.active_submenu = None  # name of the currently open submenu, or None
-        self.item_shortcuts = {"Show equity": "Ctrl+A"}
+        self.item_shortcuts = {"Analyze": "Ctrl+A"}
 
         # Selection state
         self.position = Position()
@@ -46,6 +46,7 @@ class Board:
 
         self.text_area = TextArea(self.screen, self.map)
         Logger.set_text_area(self.text_area)
+        self.analysis_panel = AnalysisPanel(self.screen, self.map)
 
         # Background work: analysis and engine moves share one worker thread
         self.analysis_worker = AnalysisWorker()
@@ -78,17 +79,22 @@ class Board:
             self.position = game_position
         Logger.flush()
 
+        # An analysis of another position or roll than the current one is no longer shown.
+        analysis = self.analysis_panel.analysis
+        if analysis is not None and not analysis.matches(*self._analysis_target()):
+            self.analysis_panel.clear()
+
         future = self._pending_analysis
         if future is None or not future.done():
             return
         self._pending_analysis = None
         error = future.exception()
         if error is not None:
-            self.text_area.show_text(f"Analysis failed: {error}")
+            self.analysis_panel.show_status(f"Analysis failed: {error}")
+        elif future.result().matches(*self._analysis_target()):
+            self.analysis_panel.set_analysis(future.result())
         else:
-            equity = future.result()
-            chance = Evaluator.equity_to_winning_chance(equity)
-            self.text_area.show_text(f"Equity for ME: {equity:+.3f} (winning chance {chance:.1%})")
+            self.analysis_panel.clear()
 
     @property
     def is_game_running(self) -> bool:
@@ -109,6 +115,8 @@ class Board:
             self.selected_point = self.selected_player = None
 
         self.screen.fill(self.map.BORDER)
+        # A move selected in the analysis panel is shown instead of the current position.
+        position = self.analysis_panel.preview() or position
 
         board_rect = pygame.Rect(self.map.board_x, self.map.board_y,
                                  self.map.board_width, self.map.board_height)
@@ -124,6 +132,7 @@ class Board:
         self._draw_turn_indicator()
         self._draw_dice()
         self.text_area.draw()
+        self.analysis_panel.draw()
         self._draw_menu()
 
         pygame.display.flip()
@@ -309,22 +318,32 @@ class Board:
         pygame.draw.polygon(self.screen, color, points)
         pygame.draw.polygon(self.screen, self.map.BLACK, points, 2)
 
-    def _draw_dice(self):
-        """Draw the current roll on the mover's half of the board during a displayed game."""
+    def _dice_rects(self) -> list:
+        """Where the two dice are drawn (left, right), or [] when no dice are shown."""
         controller = self.game_controller
         if not controller.is_running or controller.is_hidden or controller.game.dice is None:
+            return []
+        size = round(self.map.checker_radius * 1.6)
+        center_x, center_y = self.map.dice_center(controller.game.current_player)
+        return [pygame.Rect(center_x + (i - 1) * (size + size // 4) + size // 8, center_y - size // 2, size, size)
+                for i in range(2)]
+
+    def _draw_dice(self):
+        """Draw the current roll on the mover's half of the board during a displayed game: high
+        left, low right (unless swapped), dice already played faded."""
+        rects = self._dice_rects()
+        if not rects:
             return
-        player = controller.game.current_player
+        player = self.game_controller.game.current_player
         die_color, pip_color = ((self.map.WHITE, self.map.BLACK) if player == Player.ME
                                 else (self.map.RED, self.map.WHITE))
-        size = round(self.map.checker_radius * 1.6)
-        center_x, center_y = self.map.dice_center(player)
-        for i, value in enumerate(controller.game.dice):
-            x = center_x + (i - 1) * (size + size // 4) + size // 8
-            rect = pygame.Rect(x, center_y - size // 2, size, size)
-            pygame.draw.rect(self.screen, die_color, rect, border_radius=size // 6)
-            pygame.draw.rect(self.screen, self.map.BLACK, rect, 2, border_radius=size // 6)
-            self._draw_pips(rect, value, pip_color)
+        for rect, (value, played) in zip(rects, self.game_controller.display_dice()):
+            face = tuple((c + 2 * 160) // 3 for c in die_color) if played else die_color
+            pips = tuple((c + 2 * 160) // 3 for c in pip_color) if played else pip_color
+            radius = rect.width // 6
+            pygame.draw.rect(self.screen, face, rect, border_radius=radius)
+            pygame.draw.rect(self.screen, self.map.BLACK, rect, 2, border_radius=radius)
+            self._draw_pips(rect, value, pips)
 
     PIP_LAYOUT = {
         1: [(0, 0)], 2: [(-1, -1), (1, 1)], 3: [(-1, -1), (0, 0), (1, 1)],
@@ -342,6 +361,9 @@ class Board:
         """A click on the board during a game: part of entering a human move."""
         controller = self.game_controller
         if not controller.is_human_turn:
+            return
+        if is_left_click and any(rect.collidepoint(mouse_pos) for rect in self._dice_rects()):
+            controller.click_dice()
             return
         point = self.map.point_at(*mouse_pos, controller.game.current_player)
         controller.handle_click(point, is_left_click)
@@ -423,6 +445,22 @@ class Board:
         self.map = BoardMap(width, height)
         self.text_area = TextArea(self.screen, self.map)
         Logger.set_text_area(self.text_area)
+        old, self.analysis_panel = self.analysis_panel, AnalysisPanel(self.screen, self.map)
+        self.analysis_panel.analysis, self.analysis_panel.selected = old.analysis, old.selected
+        self.analysis_panel.status = old.status
+
+    def handle_panel_click(self, mouse_pos) -> bool:
+        """A left click on the analysis panel: select a move (shown on the board), or play the
+        selected move when it's the human's turn. Returns whether the click was on the panel."""
+        action = self.analysis_panel.handle_click(mouse_pos)
+        if action == "play":
+            candidate = self.analysis_panel.selected_move()
+            controller = self.game_controller
+            if (candidate is not None and candidate.move is not None and controller.is_human_turn and
+                    self.analysis_panel.analysis.matches(*self._analysis_target())):
+                controller.play_move(candidate.move)
+                self.analysis_panel.clear()
+        return action is not None
 
     def quit(self):
         """Clean up pygame."""
@@ -539,7 +577,7 @@ class Board:
         return self.screen.copy()
 
     def _handle_submenu_action(self, menu: str, item: str):
-        if menu == "Analyze" and item == "Show equity":
+        if menu == "Analyze" and item == "Analyze":
             self.analyze()
         elif menu == "Analyze" and item == "Settings":
             SettingsDialog(self.screen, self.map, self.analysis_worker).show(self._board_snapshot())
@@ -577,10 +615,28 @@ class Board:
         elif key == pygame.K_BACKSPACE:
             self.game_controller.undo()
 
+    def _analysis_target(self):
+        """(position, dice) to analyze: during a game the game's position and dice, otherwise the
+        edited position before its roll (dice None)."""
+        game = self.game_controller.game
+        if game is not None:
+            return game.position, game.dice
+        return self.position, None
+
     def analyze(self):
-        """Start analyzing the current position in the background; update() shows the result."""
+        """Analyze in the background with the Rust engine at the analysis depth; update() shows the
+        result in the analysis panel. On a human's turn in a game: all moves with the dice, for
+        the game's scoring. Without a game: the edited position, for the side on roll."""
         if self._pending_analysis is not None:
-            self.text_area.show_text("Analysis already in progress...")
+            self.analysis_panel.show_status("Analysis already in progress...")
             return
-        self.text_area.show_text("Analyzing position...")
-        self._pending_analysis = self.analysis_worker.equity(self.position, Player.ME)
+        game = self.game_controller.game
+        if game is not None and (not self.game_controller.is_human_turn or game.dice is None):
+            self.analysis_panel.show_status("During a game, moves are analyzed on a human player's turn")
+            return
+        position, dice = self._analysis_target()
+        money = game is not None and not game.config.dmp
+        depth = Settings.analysis_depth
+        what = f"the moves with {dice[0]}-{dice[1]}" if dice else "the position"
+        self.analysis_panel.show_status(f"Analyzing {what} at depth {depth}...")
+        self._pending_analysis = self.analysis_worker.analyze(position, dice, depth, money)

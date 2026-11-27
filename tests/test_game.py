@@ -1,7 +1,7 @@
 import random
 import unittest
 
-from backgammon.game.game import (Game, GameConfig, PlayerConfig, PlayerType, MoveBuilder,
+from backgammon.game.game import (Game, GameConfig, PlayerConfig, PlayerType, MoveBuilder, WinType,
                                   format_move)
 from backgammon.game.position import GameVariant, Position, Player
 
@@ -101,6 +101,72 @@ class PlayTest(unittest.TestCase):
                 game.start()
                 move = game.engine_move()
                 self.assertIn(move, game.legal_moves())
+
+
+class GammonTest(unittest.TestCase):
+    """Win types and points: a gammon when the loser has borne off nothing, a backgammon when the
+    loser also still has a checker on the bar or in the winner's home board."""
+
+    @staticmethod
+    def final_position(opponent: dict) -> Position:
+        """ME has borne off everything; OPPONENT's checkers (own numbering) as given."""
+        position = Position()
+        position.set_checkers(Player.ME, 0, 15)
+        for point, count in opponent.items():
+            position.set_checkers(Player.OPPONENT, point, count)
+        return position
+
+    def test_win_types(self):
+        cases = [({0: 1, 6: 14}, WinType.SINGLE),
+                 ({0: 1, 6: 13, 25: 1}, WinType.SINGLE),        # borne off one: never more than single
+                 ({6: 15}, WinType.GAMMON),
+                 ({18: 1, 6: 14}, WinType.GAMMON),               # 18 is just outside ME's home board
+                 ({19: 1, 6: 14}, WinType.BACKGAMMON),           # ME's 6 point
+                 ({24: 1, 6: 14}, WinType.BACKGAMMON),           # ME's 1 point
+                 ({25: 1, 6: 14}, WinType.BACKGAMMON)]           # on the bar
+        for opponent, expected in cases:
+            self.assertEqual(expected, WinType.of(self.final_position(opponent), Player.ME), opponent)
+
+    def play_last_move(self, dmp: bool, opponent: dict):
+        """ME bears off the last checker (2-1, 1/off) against OPPONENT's checkers as given."""
+        messages = []
+        config = humans()
+        config.dmp = dmp
+        game = Game(config, rng=ScriptedDice([2, 1]), log=messages.append)
+        game.start()
+        position = self.final_position(opponent)
+        position.set_checkers(Player.ME, 0, 14)
+        position.set_checkers(Player.ME, 1, 1)
+        game.position = position
+        game.play(((1, 0),))
+        return game, messages[-1]
+
+    def test_points_without_dmp(self):
+        for opponent, points, text in [({0: 3, 6: 12}, 1, "ME wins (1 point)"),
+                                       ({6: 15}, 2, "ME wins a gammon (2 points)"),
+                                       ({20: 2, 6: 13}, 3, "ME wins a backgammon (3 points)")]:
+            game, message = self.play_last_move(False, opponent)
+            self.assertEqual(points, game.points)
+            self.assertEqual(text, message)
+            self.assertEqual(text, game.result_text())
+
+    def test_dmp_counts_every_win_as_one_point(self):
+        game, message = self.play_last_move(True, {20: 2, 6: 13})
+        self.assertEqual(WinType.BACKGAMMON, game.win_type)   # still known
+        self.assertEqual(1, game.points)
+        self.assertEqual("ME wins", message)
+
+    def test_dmp_is_the_default(self):
+        self.assertTrue(GameConfig().dmp)
+        self.assertIsNone(Game(humans()).points)
+
+    def test_game_in_rust_gets_a_win_type(self):
+        config = engines()
+        config.dmp = False
+        game = Game(config, rng=random.Random(3))
+        game.play_in_rust(seed=11)
+        self.assertEqual(WinType.of(game.position, game.winner), game.win_type)
+        self.assertEqual(game.win_type.value, game.points)
 
 
 class FullGameTest(unittest.TestCase):
@@ -221,6 +287,56 @@ class MoveBuilderTest(unittest.TestCase):
         self.assertEqual((), builder.move)
         self.assertTrue(builder.can_move_from(24))
         self.assertFalse(builder.can_move_from(3))
+
+
+class MoveBuilderStepTest(unittest.TestCase):
+    """Steps by one die (the UI's way of entering moves)."""
+
+    @staticmethod
+    def builder(position, die1, die2):
+        from backgammon.game.utils import Utils
+        return MoveBuilder(Utils.valid_possible_moves(position, die1, die2), (die1, die2))
+
+    def test_steps_by_die(self):
+        position = Position()
+        position.setup_starting_position()
+        builder = self.builder(position, 3, 1)
+        self.assertEqual([3, 1], builder.remaining_dice())
+        self.assertFalse(builder.try_step(8, 2))     # not one of the dice
+        self.assertTrue(builder.try_step(8, 3))
+        self.assertEqual([1], builder.remaining_dice())
+        self.assertFalse(builder.try_step(8, 3))     # the 3 is used
+        self.assertTrue(builder.try_step(6, 1))
+        self.assertTrue(builder.is_complete)
+        self.assertEqual(((8, 5), (6, 5)), builder.move)
+        builder.undo()
+        self.assertEqual([1], builder.remaining_dice())
+        builder.reset()
+        self.assertEqual((), builder.move)
+
+    def test_doubles_take_four_steps(self):
+        position = Position()
+        position.setup_starting_position()
+        builder = self.builder(position, 2, 2)
+        for start in (13, 13, 6, 6):
+            self.assertTrue(builder.try_step(start, 2))
+        self.assertTrue(builder.is_complete)
+        self.assertEqual([], builder.remaining_dice())
+
+    def test_bearing_off_with_a_higher_die(self):
+        position = Position()
+        position.set_checkers(Player.ME, 3, 1)
+        position.set_checkers(Player.ME, 2, 1)
+        position.set_checkers(Player.ME, 0, 13)
+        position.set_checkers(Player.OPPONENT, 1, 15)   # far away: nothing is blocked
+        position.set_turn(Player.ME)
+        builder = self.builder(position, 6, 1)
+        # The 6 bears off the checker on the 3; then the 1 has to play the other checker.
+        self.assertTrue(builder.try_step(3, 6))
+        self.assertEqual([1], builder.remaining_dice())
+        self.assertFalse(builder.try_step(3, 1))
+        self.assertTrue(builder.try_step(2, 1))
+        self.assertTrue(builder.is_complete)
 
 
 class FormatMoveTest(unittest.TestCase):

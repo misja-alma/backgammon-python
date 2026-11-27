@@ -4,3 +4,7 @@ __pycache__
 .venv
 .venv-bgsage
 data/*.bd
+data/gnubg/
+data/decisions/
+.venv-analysis
+data/activations/

@@ -1,0 +1,14 @@
+--- 256-128: money 256,128 from scratch; alphas 0.01,0.005,0.0025, plateau after 1 segment(s) (2 in the last phase) without lowering the decision loss (millipoints, money scoring) by 0.15 (later phases 60%); games every 16M and for the final net
+256-128 alpha 0.01   4M: decisions best 70.44%  loss 6.993  pasko 11.466  atta 6.577 prim 8.046 anch 6.388 raci 7.347
+256-128 alpha 0.01   8M: decisions best 71.43%  loss 6.388  pasko 10.591  atta 6.074 prim 7.159 anch 5.892 raci 6.712
+256-128 alpha 0.01  12M: decisions best 72.33%  loss 6.123  pasko 10.046  atta 5.868 prim 6.852 anch 5.406 raci 6.635
+256-128 alpha 0.01  16M: decisions best 72.18%  loss 5.998  pasko 9.973  atta 5.795 prim 6.668 anch 5.568 raci 6.189   | bg -0.0513  nack -0.0541  mean -0.0527 ppg   -> phase done
+--- 256-128: alpha 0.005 from 256-128-16M.bgnet (decision loss 5.998)
+256-128 alpha 0.005  20M: decisions best 73.18%  loss 5.634  pasko 9.892  atta 5.301 prim 6.284 anch 5.228 raci 5.986
+256-128 alpha 0.005  24M: decisions best 73.63%  loss 5.400  pasko 9.911  atta 5.002 prim 5.919 anch 5.051 raci 5.887
+256-128 alpha 0.005  28M: decisions best 73.46%  loss 5.391  pasko 9.583  atta 4.975 prim 5.932 anch 5.047 raci 5.882   -> phase done
+--- 256-128: alpha 0.0025 from 256-128-a005-28M.bgnet (decision loss 5.391)
+256-128 alpha 0.0025  32M: decisions best 73.97%  loss 5.190  pasko 9.707  atta 4.908 prim 5.713 anch 4.814 raci 5.547   | bg -0.0420  nack -0.0398  mean -0.0409 ppg
+256-128 alpha 0.0025  36M: decisions best 74.18%  loss 5.195  pasko 9.552  atta 4.825 prim 5.524 anch 4.827 raci 5.819
+256-128 alpha 0.0025  40M: decisions best 74.12%  loss 5.254  pasko 9.607  atta 4.934 prim 5.580 anch 4.917 raci 5.780   -> phase done
+--- 256-128 best: 256-128-a0025-32M-avg (decision loss 5.190): bg -0.0420  nack -0.0398  mean -0.0409 ppg; f16 copy: bg -0.0432  nack -0.0415  mean -0.0423 ppg

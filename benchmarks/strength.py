@@ -3,6 +3,11 @@
     .venv/bin/python -m benchmarks.strength                # 10000 games, Rust depth 0 vs bgsage 1-ply
     .venv/bin/python -m benchmarks.strength --games 2000 --depth 1
     .venv/bin/python -m benchmarks.strength --variant nackgammon
+    .venv/bin/python -m benchmarks.strength --money        # cubeless money: points per game
+
+With --money both engines play for cubeless money (a gammon counts 2 points, a backgammon 3; no
+cube) and the result is our engine's average points per game, besides its win rate. Without it
+the games are double match point (every win counts 1) and the result is the win rate.
 
 Games are played in pairs with the same seed, our engine taking ME in one game and OPPONENT in the
 other, so both sides get the same dice until the moves diverge. That cancels part of the luck and
@@ -38,17 +43,20 @@ VARIANTS = {variant.name.lower(): variant for variant in GameVariant}
 
 
 def play_game(index: int, engine: PlayerType, depth: int, bgsage_depth: int, seed: int,
-              variant: GameVariant = GameVariant.BACKGAMMON) -> tuple:
+              variant: GameVariant = GameVariant.BACKGAMMON, money: bool = False) -> tuple:
     """Game index: pair index // 2 decides the dice, index % 2 which side our engine plays.
-    Returns (index, whether our engine won, number of turns)."""
+    Returns (index, whether our engine won, number of turns, points for our engine: ±1 with
+    double match point, ±1, 2 or 3 with money)."""
     ours, theirs = PlayerConfig(engine, depth), PlayerConfig(PlayerType.BGSAGE_ENGINE, bgsage_depth)
     our_side = Player.ME if index % 2 == 0 else Player.OPPONENT
     config = GameConfig(ours, theirs) if our_side == Player.ME else GameConfig(theirs, ours)
     config.variant = variant
+    config.dmp = not money
     game = Game(config, random.Random(f"{seed}-{index // 2}"))
     game.start()
     game.play_to_end()
-    return index, game.winner == our_side, game.turns
+    won = game.winner == our_side
+    return index, won, game.turns, game.points if won else -game.points
 
 
 def init_worker(network, bearoff=None) -> None:
@@ -73,31 +81,42 @@ def git_commit() -> str:
         return "unknown"
 
 
-def summarize(results: list) -> dict:
-    """Win rate with its standard error, computed over game pairs (the pairs are independent,
-    the two games within a pair are not)."""
-    wins = [won for _, won, _ in sorted(results)]
-    pair_scores = [(wins[i] + wins[i + 1]) / 2 for i in range(0, len(wins) - 1, 2)]
+def pair_mean(values: list) -> tuple[int, float, float]:
+    """(number of pairs, mean per game, its standard error), computed over game pairs (the pairs
+    are independent, the two games within a pair are not)."""
+    pair_scores = [(values[i] + values[i + 1]) / 2 for i in range(0, len(values) - 1, 2)]
     n = len(pair_scores)
     mean = sum(pair_scores) / n
     variance = sum((s - mean) ** 2 for s in pair_scores) / (n - 1) if n > 1 else 0.0
-    return {"games": 2 * n, "wins": sum(wins[:2 * n]), "win_rate": mean, "std_error": math.sqrt(variance / n),
-            "avg_turns": sum(t for _, _, t in results) / len(results)}
+    return n, mean, math.sqrt(variance / n)
+
+
+def summarize(results: list) -> dict:
+    """Win rate and points per game, with their standard errors."""
+    results = sorted(results)
+    wins = [won for _, won, _, _ in results]
+    n, rate, se = pair_mean(wins)
+    _, ppg, ppg_se = pair_mean([points for _, _, _, points in results])
+    return {"games": 2 * n, "wins": sum(wins[:2 * n]), "win_rate": rate, "std_error": se,
+            "ppg": ppg, "ppg_se": ppg_se, "avg_turns": sum(r[2] for r in results) / len(results)}
 
 
 RESULT_COLUMNS = ["date", "commit", "engine", "depth", "bgsage_ply", "games", "seed",
-                  "win_rate", "std_error", "seconds", "note", "evaluator", "variant"]
+                  "win_rate", "std_error", "seconds", "note", "evaluator", "variant", "scoring", "ppg", "ppg_se"]
+# Columns added later, with their value for older rows.
+LATER_COLUMNS = {"variant": "backgammon", "scoring": "dmp", "ppg": "", "ppg_se": ""}
 
 
-def add_variant_column() -> None:
-    """Results files from before the variant column: add it, 'backgammon' for the old rows."""
+def add_later_columns() -> None:
+    """Results files from before a column existed: add it, with its value for the old rows."""
     if not RESULTS_FILE.exists():
         return
     with RESULTS_FILE.open(newline="") as f:
         rows = list(csv.reader(f))
-    if not rows or "variant" in rows[0]:
+    missing = [c for c in LATER_COLUMNS if rows and c not in rows[0]]
+    if not missing:
         return
-    rows = [rows[0] + ["variant"]] + [row + ["backgammon"] for row in rows[1:]]
+    rows = [rows[0] + missing] + [row + [LATER_COLUMNS[c] for c in missing] for row in rows[1:]]
     with RESULTS_FILE.open("w", newline="") as f:
         csv.writer(f).writerows(rows)
 
@@ -111,9 +130,12 @@ def main() -> None:
     parser.add_argument("--variant", choices=VARIANTS, default="backgammon",
                         help="starting position (backgammon)")
     parser.add_argument("--seed", type=int, default=1, help="dice seed (1)")
+    parser.add_argument("--money", action="store_true",
+                        help="cubeless money (gammons count) instead of double match point")
     parser.add_argument("--workers", type=int, default=os.cpu_count(), help="parallel processes (all cores)")
-    parser.add_argument("--net", default=Settings.rust_network,
-                        help=f"Rust engine's net file, or 'none' for the placeholder ({Settings.rust_network})")
+    parser.add_argument("--net", default=None,
+                        help="Rust engine's net file, or 'none' for the placeholder (the settings' net for the "
+                             "variant and scoring, see Settings.rust_network_for)")
     default_bearoff = (Settings.rust_bearoff_db
                        if Settings.rust_bearoff_db and (PROJECT_ROOT / Settings.rust_bearoff_db).exists() else None)
     parser.add_argument("--bearoff", default=default_bearoff,
@@ -125,6 +147,8 @@ def main() -> None:
 
     if not BgsageAnalyzer.is_available():
         sys.exit("bgsage is not installed; run 'make bgsage' first")
+    if args.net is None:
+        args.net = Settings.rust_network_for(VARIANTS[args.variant], dmp=not args.money)
     network = None if args.net in (None, "none") else args.net
     evaluator = AnalyzerProxy.set_rust_network(network)   # fails early for a missing or bad file
     bearoff = None if args.bearoff in (None, "none") else args.bearoff
@@ -132,8 +156,9 @@ def main() -> None:
     games = args.games + args.games % 2
     engine = ENGINES[args.engine]
     variant = VARIANTS[args.variant]
-    tasks = [(i, engine, args.depth, args.bgsage_depth, args.seed, variant) for i in range(games)]
-    print(f"{args.engine} engine depth {args.depth} vs bgsage {args.bgsage_depth + 1}-ply, {args.variant}: "
+    tasks = [(i, engine, args.depth, args.bgsage_depth, args.seed, variant, args.money) for i in range(games)]
+    scoring = "money" if args.money else "dmp"
+    print(f"{args.engine} engine depth {args.depth} vs bgsage {args.bgsage_depth + 1}-ply, {args.variant}, {scoring}: "
           f"{games} games on {args.workers} processes, seed {args.seed}")
     if args.engine == "rust":
         print(f"Evaluator: {evaluator}; {bearoff_description}")
@@ -145,8 +170,9 @@ def main() -> None:
         for result in pool.imap_unordered(_play_game_args, tasks, chunksize=20):
             results.append(result)
             if len(results) % 500 == 0 or len(results) == games:
-                wins = sum(won for _, won, _ in results)
-                print(f"  {len(results):6d}/{games}  win rate {wins / len(results):6.2%}  "
+                wins = sum(r[1] for r in results)
+                points = f"  {sum(r[3] for r in results) / len(results):+.3f} ppg" if args.money else ""
+                print(f"  {len(results):6d}/{games}  win rate {wins / len(results):6.2%}{points}  "
                       f"{time.time() - start:6.0f}s", flush=True)
     seconds = time.time() - start
 
@@ -154,9 +180,11 @@ def main() -> None:
     rate, se = summary["win_rate"], summary["std_error"]
     print(f"\nWin rate {rate:.2%} ± {1.96 * se:.2%} (95% CI), {summary['wins']}/{summary['games']} games, "
           f"{summary['avg_turns']:.1f} turns per game, {seconds:.0f}s")
+    if args.money:
+        print(f"Points per game {summary['ppg']:+.4f} ± {1.96 * summary['ppg_se']:.4f} (95% CI)")
 
     if not args.no_save:
-        add_variant_column()
+        add_later_columns()
         is_new = not RESULTS_FILE.exists()
         with RESULTS_FILE.open("a", newline="") as f:
             writer = csv.writer(f)
@@ -165,7 +193,8 @@ def main() -> None:
             writer.writerow([datetime.datetime.now().isoformat(timespec="seconds"), git_commit(), args.engine,
                              args.depth, args.bgsage_depth + 1, summary["games"], args.seed,
                              f"{rate:.4f}", f"{se:.4f}", round(seconds), args.note,
-                             evaluator if args.engine == "rust" else "", args.variant])
+                             evaluator if args.engine == "rust" else "", args.variant, scoring,
+                             f"{summary['ppg']:.4f}", f"{summary['ppg_se']:.4f}"])
         print(f"Saved to {RESULTS_FILE.relative_to(PROJECT_ROOT)}")
 
 

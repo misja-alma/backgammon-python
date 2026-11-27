@@ -50,6 +50,13 @@ class AnalysisWorker:
         snapshot = copy.deepcopy(position)
         return self.submit(lambda: AnalyzerProxy.equity(snapshot, player))
 
+    def analyze(self, position: Position, dice, depth: int, money: bool) -> Future:
+        """Analyze the moves with dice (or the position itself for dice None) in the background,
+        see move_analysis.analyze. The future resolves to an Analysis."""
+        from backgammon.game.move_analysis import analyze
+        snapshot = copy.deepcopy(position)
+        return self.submit(lambda: analyze(snapshot, dice, depth, money))
+
     def set_rust_cache_size(self, megabytes: int) -> Future:
         """Resize the Rust engine's cache on the worker thread (where the engine runs), after any
         queued task."""

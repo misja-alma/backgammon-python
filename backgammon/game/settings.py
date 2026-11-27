@@ -17,25 +17,38 @@ class Analyzer(Enum):
 
 class Settings:
     analyzer: Analyzer = Analyzer.RUST
-    analysis_depth: int = 3
+    analysis_depth: int = 2
     # Memory for the Rust engine's cache (a fixed-size transposition table). More memory means
     # more cache hits in deep searches; 1 GB is as fast as an unbounded cache at depth 3.
     rust_cache_mb: int = 1024
     # Neural net used as the Rust engine's evaluator (a weight file written by the Rust `train`
-    # binary), relative to the project root. None, or a missing file, means the placeholder
+    # binary, or its half-precision evaluation copy from `make eval-net`, about 3x faster),
+    # relative to the project root. None, or a missing file, means the placeholder
     # evaluator, which only recognizes finished games.
-    rust_network: Optional[str] = "nets/td.bgnet"
-    # The net for nackgammon games; same conventions. The default net (256-256, trained on
+    rust_network: Optional[str] = "nets/td-eval.bgnet"
+    # The net for nackgammon games; same conventions. The default net (512-256, trained on
     # backgammon and nackgammon starts alternately) is the best for both variants, so it's the same
-    # file. A nackgammon specialist (128-128) is in nets/nack/nack-4M-avg.bgnet.
-    rust_nackgammon_network: Optional[str] = "nets/td.bgnet"
+    # file. The previous default (576-192) is nets/td-576-192-eval.bgnet. A nackgammon specialist (128-128) is in nets/nack/nack-4M-avg.bgnet.
+    rust_nackgammon_network: Optional[str] = "nets/td-eval.bgnet"
+    # The nets for games that aren't double match point (cubeless money: gammons count), per
+    # variant: money nets (5 outputs, `train --objective money`); None means the double match
+    # point net above, which plays to win and ignores gammons. Default: the f16 copy of
+    # nets/td-money.bgnet, a 512-256 money net trained on both variants (52M games, alpha decayed to
+    # 0.0025; +0.007 ppg against bgsage). The previous default (256-256) is nets/td-money-256-256-52M-eval.bgnet.
+    rust_money_network: Optional[str] = "nets/td-money-eval.bgnet"
+    rust_nackgammon_money_network: Optional[str] = "nets/td-money-eval.bgnet"
     # Two-sided bearoff database (exact winning chances once both sides are in their home boards),
     # built with `make bearoff` (5.9 GB, not in git). None, or a missing file, means the net is used
     # for bearoff positions too.
     rust_bearoff_db: Optional[str] = "data/bearoff-6x15.bd"
 
     @classmethod
-    def rust_network_for(cls, variant) -> Optional[str]:
-        """The Rust engine's net for a GameVariant."""
+    def rust_network_for(cls, variant, dmp: bool = True) -> Optional[str]:
+        """The Rust engine's net for a GameVariant, at double match point (dmp) or for money
+        (the money net, falling back to the double match point net when there is none)."""
         from backgammon.game.position import GameVariant
-        return cls.rust_nackgammon_network if variant == GameVariant.NACKGAMMON else cls.rust_network
+        nack = variant == GameVariant.NACKGAMMON
+        dmp_net = cls.rust_nackgammon_network if nack else cls.rust_network
+        if dmp:
+            return dmp_net
+        return (cls.rust_nackgammon_money_network if nack else cls.rust_money_network) or dmp_net

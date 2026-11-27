@@ -1,0 +1,7 @@
+Training 256-384-384-1 td-nack-v1 dmp, 0 games for 4000000 mixed games: Sgd, alpha 0.01, lambda 0.7, seed 9301, 12 threads -> /Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-4M.bgnet
+Games stop at bearoff positions, with the exact value from data/bearoff-6x15.bd
+  1000000 games (  1000000 total)  alpha 0.01000     620 games/s   59.2 turns/game  vs pip count  99.4%  saved
+  2000000 games (  2000000 total)  alpha 0.01000     652 games/s   58.5 turns/game  vs pip count  99.5%  saved
+  3000000 games (  3000000 total)  alpha 0.01000     667 games/s   58.2 turns/game  vs pip count  99.6%  saved
+  4000000 games (  4000000 total)  alpha 0.01000     674 games/s   58.2 turns/game  vs pip count  99.6%  saved
+average of the last 500000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-4M-avg.bgnet  vs pip count  99.8%

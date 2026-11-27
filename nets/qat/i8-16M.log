@@ -1,0 +1,7 @@
+Training 256-256-256-1 td-nack-v1, 12000000 games for 4000000 mixed games: Sgd, alpha 0.01, lambda 0.7, seed 5104, 12 threads -> /Users/misja/PycharmProjects/backgammon-python/nets/qat/i8-16M.bgnet
+Quantization-aware: games played and judged by the i8 evaluation copy
+  1000000 games ( 13000000 total)  alpha 0.01000    3495 games/s   63.2 turns/game  vs pip count  99.6%  saved
+  2000000 games ( 14000000 total)  alpha 0.01000    3504 games/s   63.1 turns/game  vs pip count  99.8%  saved
+  3000000 games ( 15000000 total)  alpha 0.01000    3507 games/s   63.1 turns/game  vs pip count  99.8%  saved
+  4000000 games ( 16000000 total)  alpha 0.01000    3506 games/s   63.1 turns/game  vs pip count  99.9%  saved
+average of the last 500000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/qat/i8-16M-avg.bgnet  vs pip count  99.8%

@@ -1,0 +1,2 @@
+Training 256-384-384-1 td-nack-v1 dmp, 40000000 games for 4000000 mixed games: Sgd, alpha 0.005, lambda 0.7, seed 9403, 12 threads -> /Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-44M.bgnet
+Games stop at bearoff positions, with the exact value from data/bearoff-6x15.bd

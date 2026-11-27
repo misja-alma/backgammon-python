@@ -1,0 +1,13 @@
+56937 games of 256-512-256-1 td-nack-v1 dmp, 52000000 games (reference net), 208 s
+holding-ahead 12000
+holding-behind 12000
+blitz-attacker 12000
+blitz-defender 12000
+prime-trapper 12000
+prime-trapped 12000
+contact-bearoff-ahead 12000
+contact-bearoff-behind 12000
+back-game 12000
+escaped-opponent 12000
+late-hit 12000
+generic 12000

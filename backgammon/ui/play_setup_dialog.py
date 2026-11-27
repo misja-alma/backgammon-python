@@ -7,7 +7,8 @@ from backgammon.ui.dialog import Dialog
 
 class PlaySetupDialog(Dialog):
     """Choose the two players (human or an engine, with search depth), the variant (backgammon or
-    nackgammon) and whether a game between two engines is displayed. run() returns a GameConfig,
+    nackgammon), double match point (no gammons) or not, and whether a game between two engines
+    is displayed. run() returns a GameConfig,
     or None when cancelled."""
 
     MIN_DEPTH, MAX_DEPTH = 0, 4
@@ -17,12 +18,13 @@ class PlaySetupDialog(Dialog):
     _last_config = GameConfig()
 
     def __init__(self, screen, board_map):
-        super().__init__(screen, board_map, "Start game", 2 * self.COLUMN_WIDTH + 40, 362)
+        super().__init__(screen, board_map, "Start game", 2 * self.COLUMN_WIDTH + 40, 390)
         last = PlaySetupDialog._last_config
         self.players = {Player.ME: PlayerConfig(last.me.type, last.me.depth),
                         Player.OPPONENT: PlayerConfig(last.opponent.type, last.opponent.depth)}
         self.show_engine_game = last.show_engine_game
         self.variant = last.variant
+        self.dmp = last.dmp
 
         self.radios = {}    # (player, PlayerType) → rect
         self.steppers = {}  # player → (minus rect, plus rect)
@@ -33,7 +35,8 @@ class PlaySetupDialog(Dialog):
             self.steppers[player] = (self.rect(x + 70, 198, 28, 28), self.rect(x + 140, 198, 28, 28))
         self.variant_radios = {variant: self.rect(90 + i * self.COLUMN_WIDTH, 246, 16, 16)
                                for i, variant in enumerate(GameVariant)}
-        self.checkbox_show = self.rect(30, 280, 16, 16)
+        self.checkbox_dmp = self.rect(30, 280, 16, 16)
+        self.checkbox_show = self.rect(30, 308, 16, 16)
 
     def _all_engines(self) -> bool:
         return all(config.type.is_engine for config in self.players.values())
@@ -54,6 +57,7 @@ class PlaySetupDialog(Dialog):
         for variant, rect in self.variant_radios.items():
             self.draw_radio(rect, self.variant == variant, variant.value)
 
+        self.draw_checkbox(self.checkbox_dmp, self.dmp, "Double match point (no gammons)")
         self.draw_checkbox(self.checkbox_show, self.show_engine_game,
                            "Show game (engine vs engine)", enabled=self._all_engines())
 
@@ -79,12 +83,15 @@ class PlaySetupDialog(Dialog):
             if rect.collidepoint(pos):
                 self.variant = variant
                 return
+        if self.checkbox_dmp.collidepoint(pos):
+            self.dmp = not self.dmp
+            return
         if self.checkbox_show.collidepoint(pos) and self._all_engines():
             self.show_engine_game = not self.show_engine_game
 
     def result(self) -> Optional[GameConfig]:
         config = GameConfig(self.players[Player.ME], self.players[Player.OPPONENT],
                             show_engine_game=self.show_engine_game or not self._all_engines(),
-                            variant=self.variant)
+                            variant=self.variant, dmp=self.dmp)
         PlaySetupDialog._last_config = config
         return config

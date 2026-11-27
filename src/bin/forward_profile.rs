@@ -153,4 +153,14 @@ fn main() {
     row(&format!("layer {} ({}x1), dot product", n_hidden + 1, sizes[n_hidden]), t);
     parts += t;
     row("rest (collecting active inputs etc.)", forward - parts);
+
+    // The f16 evaluation copy (see eval_net), on the same inputs.
+    let copy = backgammon_rust::td_training::quantized_copy(&net, backgammon_rust::eval_net::Kind::F16);
+    let mut out = [0.0f32; 5];
+    let k = *sizes.last().unwrap();
+    let f16 = time_ns(&inputs, reps, |x| {
+        copy.forward_all(x, &mut out[..k]);
+        out[0]
+    });
+    println!("\nf16 evaluation copy, forward pass: {:6.0} ns ({:.1}x faster)", f16, forward / f16);
 }

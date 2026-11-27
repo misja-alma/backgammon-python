@@ -1,0 +1,8 @@
+f32-576-192-4M money best 70.76% loss 0.234 | pasko best 59.86% loss 0.422 | atta 0.189  prim 0.230  anch 0.257  raci 0.273  
+f32-576-192-8M money best 72.67% loss 0.197 | pasko best 62.13% loss 0.363 | atta 0.165  prim 0.184  anch 0.215  raci 0.232  
+f32-576-192-12M money best 73.35% loss 0.186 | pasko best 63.27% loss 0.341 | atta 0.162  prim 0.178  anch 0.195  raci 0.216  
+f32-576-192-16M money best 74.08% loss 0.176 | pasko best 64.55% loss 0.318 | atta 0.150  prim 0.172  anch 0.189  raci 0.201  
+f32-576-192-20M money best 74.22% loss 0.168 | pasko best 64.83% loss 0.308 | atta 0.148  prim 0.151  anch 0.185  raci 0.190  
+f32-576-192-24M money best 74.79% loss 0.165 | pasko best 65.02% loss 0.297 | atta 0.144  prim 0.155  anch 0.172  raci 0.195  
+f32-576-192-28M money best 74.86% loss 0.160 | pasko best 65.21% loss 0.290 | atta 0.133  prim 0.166  anch 0.177  raci 0.173  
+f32-576-192-32M money best 74.86% loss 0.160 | pasko best 65.12% loss 0.299 | atta 0.137  prim 0.159  anch 0.170  raci 0.179  

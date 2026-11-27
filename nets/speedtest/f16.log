@@ -1,0 +1,11 @@
+Training 256-512-256-5 td-nack-v1 money, 44000000 games for 4000000 mixed games: Sgd, alpha 0.0025, lambda 0.7, seed 4848, 12 threads -> nets/speedtest/f16.bgnet
+Games stop at bearoff positions, with the exact value from data/bearoff-6x15.bd
+Moves chosen by the f16 evaluation copy (made per game); TD updates in f32
+  1000000 games ( 45000000 total)  alpha 0.00250    4781 games/s   55.7 turns/game  vs pip count  99.8%  saved
+  2000000 games ( 46000000 total)  alpha 0.00250    4776 games/s   55.6 turns/game  vs pip count  99.8%  saved
+  3000000 games ( 47000000 total)  alpha 0.00250    4758 games/s   55.6 turns/game  vs pip count  99.9%  saved
+  4000000 games ( 48000000 total)  alpha 0.00250    4715 games/s   55.5 turns/game  vs pip count  99.9%  saved
+average of the last 500000 games saved to nets/speedtest/f16-avg.bgnet  vs pip count  99.8%
+real 853.07
+user 9816.65
+sys 63.17

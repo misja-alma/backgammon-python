@@ -1,0 +1,53 @@
+reference: int8 copy of the f32-trained 256-256 44M: bg 49.29  nack 50.26  mean 49.77   (f32: bg 49.56  nack 50.67  mean 50.12)
+f16    4M: bg 46.85  nack 46.80  mean 46.83   (f32 256-256 at 4M: 47.30)
+i8     4M: bg 46.84  nack 47.11  mean 46.98   (f32 256-256 at 4M: 47.30)
+f16    8M: bg 47.80  nack 48.00  mean 47.90   (f32 256-256 at 8M: 48.45)
+i8     8M: bg 47.93  nack 48.30  mean 48.11   (f32 256-256 at 8M: 48.45)
+f16   12M: bg 47.89  nack 48.60  mean 48.25   (f32 256-256 at 12M: 48.82)
+i8    12M: bg 48.27  nack 48.67  mean 48.47   (f32 256-256 at 12M: 48.82)
+f16   16M: bg 48.41  nack 48.97  mean 48.69   (f32 256-256 at 16M: 48.75)
+i8    16M: bg 48.38  nack 49.27  mean 48.83   (f32 256-256 at 16M: 48.75)
+f16   20M: bg 48.16  nack 49.31  mean 48.73   (f32 256-256 at 20M: 49.07)
+i8    20M: bg 48.79  nack 49.65  mean 49.22   (f32 256-256 at 20M: 49.07)
+f16   24M: bg 48.63  nack 49.41  mean 49.02   (f32 256-256 at 24M: 49.19)
+i8    24M: bg 48.72  nack 49.36  mean 49.04   (f32 256-256 at 24M: 49.19)
+f16   28M: bg 48.52  nack 49.45  mean 48.98   (f32 256-256 at 28M: 49.41)
+i8    28M: bg 49.14  nack 49.37  mean 49.25   (f32 256-256 at 28M: 49.41)
+f16   32M: bg 48.71  nack 49.38  mean 49.05   (f32 256-256 at 32M: 49.70)
+i8    32M: bg 49.03  nack 49.74  mean 49.39   (f32 256-256 at 32M: 49.70)   -> plateau
+f16   36M: bg 48.99  nack 49.91  mean 49.45   (f32 256-256 at 36M: 49.84)
+f16   40M: bg 48.90  nack 49.84  mean 49.37   (f32 256-256 at 40M: 50.03)
+f16   44M: bg 48.98  nack 49.94  mean 49.46   (f32 256-256 at 44M: 50.12)
+f16   48M: bg 49.19  nack 50.06  mean 49.62   (f32 256-256 at 48M: 49.88)   -> plateau
+i8-128-128    4M: bg 45.45  nack 45.13  mean 45.29
+f16-576-192   4M: bg 0.25  nack 0.05  mean 0.15
+i8-128-128    8M: bg 46.77  nack 46.98  mean 46.88
+f16-576-192   8M: bg 0.25  nack 0.05  mean 0.15
+i8-128-128   12M: bg 46.81  nack 47.04  mean 46.92
+f16-576-192  12M: bg 0.25  nack 0.05  mean 0.15
+i8-128-128   16M: bg 47.12  nack 47.24  mean 47.18
+f16-576-192  16M: bg 42.55  nack 41.40  mean 41.97
+i8-128-128   20M: bg 47.21  nack 47.66  mean 47.44
+--- stopped QAT on user request: training in f32 and converting is better; now f32 576-192 (-> f16) and f32 128-128 (-> i8)
+f32-576-192   4M: bg 47.49  nack 48.20  mean 47.84
+--- f32-128-128 dropped: the existing 128-128 nets are converted instead
+f32-576-192   8M: bg 48.49  nack 49.07  mean 48.78
+f32-576-192  12M: bg 48.91  nack 49.54  mean 49.22
+f32-576-192  16M: bg 49.07  nack 50.11  mean 49.59
+f32-576-192  20M: bg 49.12  nack 49.91  mean 49.52
+f32-576-192  24M: bg 49.45  nack 50.72  mean 50.09
+f32-576-192  28M: bg 49.98  nack 50.63  mean 50.30
+--- f32-576-192: from 32M on the plateau is decided by the decision benchmark (loss, margin 0.005); games every 12M and for the final net
+f32-576-192  32M: decisions best 74.86%  loss 0.160  pasko 0.299  atta 0.137 prim 0.159 anch 0.170 raci 0.179
+--- f32-576-192: plateau after 2 segments without lowering the decision loss by 0.005 (so 36M is the last chance); no more games for intermediate segments
+f32-576-192  36M: decisions best 75.26%  loss 0.158  pasko 0.291  atta 0.139 prim 0.157 anch 0.165 raci 0.176   -> plateau
+f32-576-192  28M f16 copy: bg 50.03  nack 50.64  mean 50.34
+--- low alpha: continuing f32-576-192 from 28M (decision loss 0.160)
+f32-576-192 alpha 0.005  32M: decisions best 75.17%  loss 0.153  pasko 0.280  atta 0.136 prim 0.155 anch 0.156 raci 0.172
+f32-576-192 alpha 0.005  36M: decisions best 75.36%  loss 0.152  pasko 0.277  atta 0.132 prim 0.150 anch 0.167 raci 0.166
+f32-576-192 alpha 0.005  40M: decisions best 75.25%  loss 0.151  pasko 0.271  atta 0.129 prim 0.149 anch 0.163 raci 0.170   -> phase done
+f32-576-192 alpha 0.0025  44M: decisions best 75.65%  loss 0.147  pasko 0.266  atta 0.125 prim 0.149 anch 0.158 raci 0.162
+f32-576-192 alpha 0.0025  48M: decisions best 75.69%  loss 0.148  pasko 0.259  atta 0.128 prim 0.154 anch 0.158 raci 0.159
+f32-576-192 alpha 0.0025  52M: decisions best 76.19%  loss 0.144  pasko 0.258  atta 0.124 prim 0.144 anch 0.156 raci 0.158
+f32-576-192 alpha 0.0025  56M: decisions best 75.92%  loss 0.146  pasko 0.269  atta 0.126 prim 0.147 anch 0.156 raci 0.161   -> phase done
+--- low alpha best: f32-576-192-a0025-52M-avg (decision loss 0.144, start 0.160): bg 50.26  nack 50.96  mean 50.61; f16 copy: bg 50.28  nack 51.12  mean 50.70

@@ -361,3 +361,219 @@ Plateau from ~20M (backgammon) and ~16M (nackgammon). 20–30M means: backgammon
 | 256-256 44M (default) | 49.56 | 49.60 | 50.67 | 50.72 | 50.12 | 50.16 |
 
 A consistent +0.04 to +0.09: the nets already play bearoffs nearly perfectly at 1-ply, and the paired dice make the shift visible despite the noise. 756 (single layer) stopped at 20M: 47.55 (+0.26 per 4M, still >2 behind every two-layer net). 512-256 continues with the database in training.
+
+**2026-11-22 — Half-precision evaluation net.** `src/eval_net.rs`: an inference-only copy of a trained net per hidden layer in f32, f16 (weights, biases and sums in half precision, 8 lanes per NEON register, 128 outputs per pass, non-zero units handed on via a branch-free table compaction), f16 weights with f32 sums, or int8 (`sdot`, groups of 4 inputs). Measured with `cargo run --release --bin eval_precision` on the default 256-256 (101,708 candidate positions from 100 self-play games; training running alongside):
+
+| variant | ns/eval | other move than f32 | equity loss per decision |
+|---|---|---|---|
+| f32 | ~1650 | – | – |
+| f16 weights, f32 sums | ~1290 | 0.06% | 0.000000 |
+| f16 | ~550 | 0.5% | 0.000002 |
+| int8 | ~810 | 6.9% | 0.00016 |
+| f32 compute, 8 / 6 / 5 / 4-bit weights | – | 3.9 / 12 / 22 / 51% | 0.00006 / 0.0007 / 0.003 / 0.03 |
+
+int8 is both less accurate (per-output-unit weight scales) and slower than f16 (active inputs are scattered over the groups of 4). Depth-1 search: 18.0 → 6.3 ms per move (2.84×), other move in 2 of 989; depth 2: 12.7 → 3.3 s per move (3.89×), other move in 0 of 300 (fresh 256 MB cache per move, training running alongside). vs bgsage (40k, bearoff db): f16 bg 49.50, nack 50.62 vs f32 49.60, 50.72: same strength within noise. The app uses `nets/td-eval.bgnet` (`make eval-net`, f16 copy of `nets/td.bgnet`); `load_network` reads both kinds of file.
+
+**2026-11-22 — Quantization-aware training (queued after the sweep).** `train --quantize f16|i8`: the weights stay f32 (TD steps of ~1e-5 would vanish in f16 or int8 weights), but every game is played and judged by the net's f16 or int8 evaluation copy, rebuilt at the start of each game: move choice, estimate and target of every TD error (offline TD(λ), straight-through gradient of the f32 net). int8 copies use input scale 1/30 for layer 1 (exact) and a fixed 0.05 for layer 2. Per turn ~1.6x faster than f32 self-play (2 threads: 20.6k vs 33.7k turns/s), since the moves are chosen by the fast kernels. `nets/qat/run.py`: fresh 256-256 nets, same schedule as the sweep's f32 256-256 and like it without bearoff database, each segment's average benchmarked as its evaluation copy (40k, `--bearoff none`); reference: the int8 copy of the f32-trained 256-256 44M. Eval-net files now also hold int8 layers (stored f32, quantized on loading with the scales from the header); `make_eval_net --precision i8`.
+
+**2026-11-23 — Quantization-aware training: result.** Mean of bg and nack vs bgsage (40k each, no bearoff db), each net benchmarked as its own evaluation copy:
+
+| 256-256 | 8M | 16M | 24M | 32M | 40M | 44M | 48M |
+|---|---|---|---|---|---|---|---|
+| f32 (sweep) | 48.45 | 48.75 | 49.19 | 49.70 | 50.03 | 50.12 | 49.88 |
+| trained in f16 | 47.90 | 48.69 | 49.02 | 49.05 | 49.37 | 49.46 | 49.62 (plateau) |
+| trained in int8 | 48.11 | 48.83 | 49.04 | 49.39 (plateau) | | | |
+
+Converting after training is better: the int8 copy of the f32 44M scores 49.77 and its f16 copy matches f32 (see above), while the QAT nets end 0.3–0.6 lower. Also tried 576-192 in f16: it collapsed (0.15% for 12M games, 42% at 16M), and 128-128 in int8 reached 47.44 at 20M; both stopped. From 28M on, the benchmark used bgsage 2.1.20261122: identical play (same 1000-game result), 2.5× faster benchmarks. Next: 576-192 and 128-128 trained in f32 (`run.py f32-576-192 f32-128-128`), converted at the plateau to f16 and int8 respectively.
+
+**2026-11-23 — The 128-128 mixed net converted.** `nets/flags/mixed-30M-avg` (td-flags-v1, 128-128, mixed, 30M) vs bgsage (40k each, no bearoff db): f32 bg 47.93 nack 48.27 (mean 48.10); int8 copy 47.68 / 48.43 (48.06); f16 copy 47.98 / 48.39 (48.19). Both copies are as strong as the f32 net within the noise, even int8 (8% other moves, but cheap ones). Speed (training alongside): f32 518 ns, f16 221 ns, int8 397 ns per evaluation, against 550 ns for the default 256-256 in f16, which is ~2 points stronger (50.1). Files in `nets/convert/`. A new f32 128-128 run was dropped.
+
+**2026-11-23 — Decision benchmark.** A fast, noise-free progress measure: checker play against bgsage's reference decisions (`make decisions NETS="…" [SET=pasko]`; `benchmarks/extract_decisions.py` + `src/bin/decision_benchmark.rs`). Source: bgsage's money benchmark (500 games of bgsage 3-ply against itself; reference 3-ply for clear decisions, truncated rollout within 0.05, full rollout of 1296 games within 0.02) and its Paskogammon counterpart. Kept: checker decisions that are not bearoffs, and of each only the candidates evaluated at 3-ply or better (≥ 2): 13,889 decisions (55,144 candidates) in five groups by bgsage's game plan: attacking 4103, priming 2434, anchoring 3193, racing 3041, purerace 1118; Pasko 2189. Scored for double match point: the reference best is the candidate with the highest rolled-out winning chance (in 15.7% of the decisions not bgsage's best money move). Per group: `best` (% picks of the reference best), `loss` (winning chance lost per decision, points), `error` (mean |net − reference| winning chance over the candidates), `other` (net's favourite among all legal moves is none of the candidates). 0.4 s per f16 net, 1 s per f32 256-256.
+
+Validation on 84 checkpoints with 40k-game scores (architecture sweep, QAT, 576-192, 128-128): `loss` vs mean win rate Pearson −0.98 (Spearman −0.97), `best` +0.98; among the nets ≥ 49.5 still −0.72 / +0.80, with a residual sd of 0.16–0.18 around the fit: about the noise of the game benchmark itself (sd ~0.17 for the mean of 2×40k games). The groups correlate about equally (−0.96), except purerace (−0.75: few, easy decisions). Default 256-256 (f16 = f32): best 74.1%, loss 0.162; best checkpoints 512-256 32M (75.35%, 0.143) and 28M (75.08%, 0.149), as in the games. Pasko (unseen start): loss 0.27 for the default, 0.25 for 512-256 28M, 0.35 for the 128-128.
+
+**2026-11-23 — Decision benchmark without pure races.** Pure races (bgsage's "purerace" game plan) are left out: once contact is over, the bearoff database and the search take over. Now 12,771 decisions (49,143 candidates) in four groups; Pasko 2110. Validation (85 checkpoints): `loss` vs mean win rate −0.98, `best` +0.97; nets ≥ 49.5: −0.73 / +0.78, residual sd 0.17–0.19. Default 256-256: best 74.42%, loss 0.172; 512-256 32M: 75.75%, 0.152; bgsage 1-ply (scored the same way, `post_move` win probability at a 1-point match): 76.67%, 0.137, flattered by the benchmark being bgsage's own (its games, candidates pre-selected by its 1-ply, references from its deeper searches): in games our default plays it about even.
+
+**2026-11-23 — Training curves on the decision benchmark; plateau rule switched.** Loss per segment (decision benchmark, no pure races) of the earlier runs: 512-256 4M–32M 0.239 / 0.207 / 0.192 / 0.183 / 0.170 / 0.167 / 0.158 / 0.152 (still improving when stopped; the game dip at 32M, 50.46 → 50.30, is noise); 256-256 4M–48M 0.253 / 0.229 / 0.209 / 0.200 / 0.196 / 0.188 / 0.180 / 0.178 / 0.177 / 0.176 / 0.171 / 0.170 (near its ceiling; the game dips at 16M and 48M are noise); 576-192 4M–28M 0.234 / 0.197 / 0.186 / 0.176 / 0.168 / 0.165 / 0.160 (= 512-256). From its 32M segment on, the 576-192 run stops on the decision loss instead of the games: 3 segments without lowering the best loss by 0.005 (~0.15 points of win rate), max 48M; games against bgsage only every 12M and for the final (lowest-loss) net, then its f16 copy.
+
+## 576-192 (f32): final result
+
+The plateau call was shortened to 2 segments without lowering the decision loss by 0.005, with
+no games for intermediate segments (the decision benchmark compares segments more reliably).
+Decision loss 32M 0.160, 36M 0.158 (best 75.26%), against 0.160 at 28M: plateau, 28M stays the
+best net.
+
+| net | bg | nack | mean |
+|---|---|---|---|
+| 576-192 28M (f32) | 49.98 | 50.63 | 50.30 |
+| 576-192 28M (f16 copy) | 50.03 | 50.64 | 50.34 |
+
+The f16 copy plays as strong as the f32 net. Next: continued training from 28M with alpha 0.005,
+then 0.0025 (nets/qat/lowalpha.py).
+
+## 576-192: continued with a lower alpha
+
+From the raw 28M net (decision loss 0.160), 4M-game segments scored on the decision benchmark
+(nets/qat/lowalpha.py): alpha 0.005 for 12M (32M 0.153, 36M 0.152, 40M 0.151), then alpha 0.0025
+from 40M for 16M (44M 0.147, 48M 0.148, 52M 0.144, 56M 0.146). For comparison, alpha 0.01 gained
+0.002 over 28M-36M.
+
+| net | decision loss | best | pasko loss | bg | nack | mean |
+|---|---|---|---|---|---|---|
+| 576-192 28M (alpha 0.01) | 0.160 | 74.86% | 0.290 | 49.98 | 50.63 | 50.30 |
+| 576-192 a0025-52M | 0.144 | 76.19% | 0.258 | 50.26 | 50.96 | 50.61 |
+| 576-192 a0025-52M (f16 copy) | | | | 50.28 | 51.12 | 50.70 |
+
+Lowering alpha after the plateau gains about 0.3-0.4 points of win rate against bgsage 1-ply.
+
+## 512-256 and 256-256 continued (alpha 0.01), and the candidates for a new default
+
+Continued from where the sweep stopped them (nets/arch/continue.py; bearoff database in training
+and benchmark, plateau after 2 segments without lowering the decision loss by 0.005, final games
+for the lowest-loss net). 512-256: 32M 0.152, 36M 0.149, 40M 0.151. 256-256: 48M 0.170,
+52M 0.166, 56M 0.169.
+
+| net | decision loss | bg | nack | mean | f16 copy mean | f16 ns/eval |
+|---|---|---|---|---|---|---|
+| 256-256 52M | 0.166 | 49.57 | 50.37 | 49.97 | 49.92 | 449 |
+| 512-256 36M | 0.149 | 49.90 | 50.97 | 50.44 | 50.44 | 1227 |
+| 576-192 a0025-52M (low alpha) | 0.144 | 50.26 | 50.96 | 50.61 | 50.70 | 1191 |
+
+(ns/eval: eval_precision, 30 games, the 256-256 row measured with nets/td.bgnet.) More training
+at alpha 0.01 hardly changes the game results; the lower alpha does.
+
+## Net files are marked with their objective
+
+Header line `objective dmp` (src/neural_net.rs `Objective`): the net's single output is the
+winning chance at double match point, gammons don't count. All 700 existing nets under nets/ got
+the line; files without it still load as DMP nets. Gammon-aware nets will get their own objective.
+
+## Money nets (gammons): first steps
+
+Cubeless money, no cube. A money net (`objective money`) has 5 sigmoid outputs for the player on
+roll, cumulative like GNU Backgammon's: win, win gammon, win backgammon, lose gammon, lose
+backgammon; equity = 2·win - 1 + wg - lg + wbg - lbg (clipped to consistent values).
+
+- Training (td_training.rs): TD(λ) with a trace per output, seen from a fixed side (the outputs
+  swap meaning when the side to move changes). Moves by money equity; a finished game's target is
+  its result; games stop at bearoff positions only when no gammon is possible any more (both
+  sides have borne off a checker). The 5 traces made training 12× slower than DMP at first; a
+  rewritten update (const number of traces, vectorized) brought it to ~1000 games/s on 12
+  threads (DMP ~2300).
+- Engine: `Scoring::Money` in the analyzer (finished games ±1/2/3, bearoff database only without
+  gammon chances); a DMP net in money play uses 2·win - 1.
+- Decision benchmark `--scoring money`: bgsage's reference probabilities are cumulative and give
+  its cubeless equity exactly; reference best = highest cubeless equity (it differs from
+  bgsage's cubeful best in 6% of the money set's decisions). Loss in millipoints per decision.
+  DMP nets under money scoring: 256-256 at 4M 8.90, 16M 7.84, 48M 7.30; the default 576-192 7.07.
+- Game benchmark `strength --money`: bgsage plays cubeless money too (its money setting, the
+  move with the highest cubeless equity). A first 400-game check with the DMP default net: win
+  rate 50.5%, but -0.41 points per game: once it can't win, every move is equal to it, and it
+  loses many backgammons (41 of 200 games in a tally).
+
+First money net: 256-256 from scratch (nets/money/run.py), compared per segment with the DMP
+256-256 at the same number of games.
+- Reference under money scoring: bgsage 1-ply 77.75% best, loss 3.69 millipoints (flattered, as
+  in DMP: its own benchmark). The DMP nets lose about twice that, mostly through gammons.
+
+## The standard training procedure
+
+benchmarks/train_schedule.py (make train-schedule): 4M-game segments; alpha 0.01, then 0.005,
+then 0.0025, each next phase from the best net so far once the decision loss stops improving
+(2 segments without lowering it by 0.005 points (dmp) / 0.15 millipoints (money), 60% of that in
+later phases; the first phase at most 80M games, later ones 16M); the decision benchmark per
+segment; 40k games against bgsage every 16M games and for the final best net and its f16 copy.
+The money 256-256 run switched to it after its 8M segment.
+
+Money 256-256 at 16M: decision loss 5.66 millipoints (DMP 256-256 at 16M: 7.84), Paskogammon
+9.50; 40k money games per variant against bgsage 1-ply (cubeless money): backgammon -0.046,
+nackgammon -0.039, mean -0.043 points per game (the DMP default in a 400-game check: -0.41). Made
+the default money-game net: nets/td-money.bgnet, f16 copy nets/td-money-eval.bgnet (decision loss
+5.66 too).
+
+## Money 256-256: the full run (train_schedule)
+
+Decision loss (millipoints, money scoring) per segment, with the game types:
+
+| segment | alpha | all | attacking | priming | anchoring | racing | pasko | games (ppg vs bgsage 1-ply) |
+|---|---|---|---|---|---|---|---|---|
+| 4M | 0.01 | 6.85 | 6.58 | 7.84 | 5.88 | 7.46 | 11.09 | |
+| 8M | 0.01 | 6.10 | 5.85 | 6.94 | 5.52 | 6.37 | 10.35 | |
+| 12M | 0.01 | 5.78 | 5.74 | 6.57 | 5.06 | 5.95 | 9.55 | |
+| 16M | 0.01 | 5.66 | 5.49 | 6.34 | 4.97 | 6.08 | 9.50 | -0.043 |
+| 20M | 0.01 | 5.53 | 5.28 | 6.23 | 5.17 | 5.69 | 10.09 | |
+| 24M | 0.005 | 5.33 | 5.05 | 5.93 | 4.90 | 5.66 | 9.77 | |
+| 28M | 0.005 | 5.21 | 4.90 | 5.84 | 4.88 | 5.47 | 9.52 | |
+| 32M | 0.005 | 5.19 | 4.89 | 5.66 | 4.94 | 5.50 | 9.56 | -0.025 |
+| 36M | 0.005 | 5.06 | 4.78 | 5.47 | 4.72 | 5.48 | 9.50 | |
+| 40M | 0.0025 | 5.07 | 4.72 | 5.52 | 4.84 | 5.42 | 8.98 | |
+| 44M | 0.0025 | 4.91 | 4.63 | 5.33 | 4.69 | 5.17 | 9.35 | |
+| 48M | 0.0025 | 4.89 | 4.58 | 5.26 | 4.60 | 5.35 | 9.14 | -0.019 |
+| 52M | 0.0025 | 4.83 | 4.63 | 5.37 | 4.48 | 5.03 | 8.67 | -0.024 (f16 copy -0.024) |
+
+The DMP 256-256 at the same games: 8.90 at 4M, 7.14 at 52M. Lowering alpha helped again: 0.01
+gained ~0.13 per segment at the end, 0.005 0.20 in its first. 48M and 52M in games are within the
+noise of each other (40k games per variant).
+
+### Lower alpha for the 512-256 and 256-256 DMP nets (train_schedule --plateaued)
+
+Both had plateaued at alpha 0.01 (512-256 at 36M, 256-256 at 52M); continued with alpha 0.005, then
+0.0025 (margin 0.003, 2 stale segments, at most 16M per phase). Decision loss in winning-chance points;
+games: win % vs bgsage 1-ply, 40k games per variant.
+
+| Net | Loss | Best | Pasko | Attacking | Priming | Anchoring | Racing | bg | nack | Mean |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 512-256 36M (alpha 0.01) | 0.149 | 75.75% | 0.258 | 0.128 | 0.142 | 0.163 | 0.166 | 49.90 | 50.97 | 50.44 |
+| 512-256 a005-48M | 0.138 | 76.69% | 0.251 | 0.115 | 0.133 | 0.152 | 0.160 | 50.39 | 51.54 | 50.97 |
+| **512-256 a005-52M** | **0.135** | 76.74% | 0.239 | 0.110 | 0.139 | 0.142 | 0.157 | 50.68 | 51.25 | 50.97 |
+| 512-256 a005-52M (f16 copy) | | | | | | | | 50.66 | 51.19 | 50.92 |
+| 256-256 52M (alpha 0.01) | 0.166 | 74.90% | 0.297 | | | | | 49.57 | 50.37 | 49.97 |
+| **256-256 a0025-64M** | **0.161** | 75.09% | 0.270 | 0.142 | 0.155 | 0.175 | 0.176 | 49.79 | 50.42 | 50.11 |
+| 256-256 a0025-64M (f16 copy) | | | | | | | | 49.87 | 50.45 | 50.16 |
+| 576-192 a0025-52M (default) | 0.144 | 76.19% | 0.258 | | | | | 50.26 | 50.96 | 50.61 |
+
+The 512-256 net (0.135) is now the best DMP net on the decision benchmark and in games.
+
+**2026-11-26 — Mixture of experts (built, queued).** From the activation analysis of the 512-256 default (layer-2 neuron groups, `analysis/activations.py`), 11 game types (`analysis/export_types.py` → `nets/moe/types.txt`, each the top 8% of contact positions by its groups' mean z-scored activation; a position can have several types; races and untyped positions are generic): holding-ahead, holding-behind, blitz-attacker, blitz-defender, prime-trapper, prime-trapped, contact-bearoff-ahead, contact-bearoff-behind, back-game, escaped-opponent, late-hit. Reference (router) net frozen as `nets/moe/reference.bgnet`. Staged training (`benchmarks/moe_schedule.py`, `src/moe.rs`): 1. collect 1M positions per expert from self-play of the reference net (`moe_collect`); 2. each expert alone (`moe_expert`): self-play games starting from its own positions, its type judged by the expert, the rest by the frozen reference, only the expert learns, only on its type; alphas 0.005 → 0.0025, 2M-game segments, measured on a separate measuring set (`nets/moe/measure`, own seed, excluded from training): 1000 decisions per type judged by bgsage 3-ply DMP (`benchmarks/moe_measure.py` → `data/decisions/moe-types.txt`; positions without a real decision skipped, e.g. 88% of blitz-defender positions are dances or forced); 3. gateway (`moe_gate`, one hidden layer of 512, 12 sigmoid outputs = exp(-(error/0.03)²) against a 1-ply lookahead), experts frozen; 4. evaluator (`.bgmoe`): experts rated < 0.25 skipped, remaining ratings normalized, weighted average. Reference (512-256 default) on the measuring set: all 0.151; holding-ahead 0.172, holding-behind 0.159, blitz-attacker 0.175, blitz-defender 0.186, prime-trapper 0.154, prime-trapped 0.160, contact-bearoff-ahead 0.072, contact-bearoff-behind 0.152, back-game 0.130, escaped-opponent 0.190, late-hit 0.116, generic 0.140. (bgsage lists bearing off the last checker with one die as legal when both dice could be played; our generator requires both dice: such no-decision positions are skipped.) Starts after the 384-384 and money 512-256 runs.
+
+**2026-11-26 — Decision benchmark leaves out decisions without a difference.** `decision_benchmark` now drops decisions where every candidate is worth the same under the scoring (every net scores 0 there): money set 52 under dmp scoring (moves differing only in gammons) and 4 under money scoring, Paskogammon 9 and 2. Losses are ~0.4% higher than before (fewer decisions in the denominator), best % slightly lower. The running 384-384 and money 512-256 schedules keep their own (old) copy of the binary until they finish. Re-measured (dmp: money set / pasko; money nets: millipoints):
+
+| Net | money set | attacking | priming | anchoring | racing | pasko |
+|---|---|---|---|---|---|---|
+| 512-256 a005-52M (default DMP) | 0.135 | 0.111 | 0.139 | 0.143 | 0.157 | 0.240 |
+| 576-192 a0025-52M (previous default) | 0.145 | 0.125 | 0.144 | 0.158 | 0.158 | 0.259 |
+| 256-256 a0025-64M | 0.162 | 0.143 | 0.155 | 0.176 | 0.176 | 0.271 |
+| 384-384 32M (alpha 0.01, running) | 0.164 | 0.137 | 0.161 | 0.177 | 0.188 | 0.275 |
+| money 256-256 a0025-52M (default money), money scoring | 4.831 | 4.635 | 5.366 | 4.483 | 5.033 | 8.674 |
+| money 512-256 12M (running), money scoring | 5.413 | 4.967 | 5.790 | 5.167 | 5.970 | 9.311 |
+| 512-256 DMP default, money scoring | 6.464 | 6.117 | 6.402 | 6.752 | 6.678 | 9.730 |
+
+## Money 512-256 (train_schedule): the new default money net
+
+Decision loss (millipoints, money scoring): alpha 0.01 to 24M (4.75), 0.005 to 36M (4.29), 0.0025
+to 52M. Best: 52M avg, loss 4.047 (attacking 4.05, priming 4.42, anchoring 3.51, racing 4.31,
+Paskogammon 8.09); the 256-256 money default had 4.83. 40k money games per variant against
+bgsage: backgammon +0.0046, nackgammon +0.0093, mean +0.0069 ppg (f16 copy +0.0066; 256-256
+default -0.0238). Made the default money net (2026-11-27): nets/td-money.bgnet, f16 copy
+nets/td-money-eval.bgnet; the previous one is nets/td-money-256-256-52M(-eval).bgnet.
+
+## Training speed: offline TD(λ) (2026-11-27)
+
+Profile of money training (512-256 net, one thread, `train_profile_money`): 79% of the time went
+to the dense eligibility traces (264k parameters x 5 outputs decayed and added after every move,
+223 µs per move), 19% to the move choice (18.4 evaluations of ~2.9 µs). Now offline TD(λ): the
+weights stay fixed during a game and change at its end by what the traces would add up to (one
+sparse backward pass per position of its λ-return error; zero inputs and inactive ReLUs skipped),
+and the chosen position is no longer evaluated again (the next turn's estimate is its target).
+Training (12 threads): 471 -> 2497 games/s (5.3x); a 4M segment takes 26 min instead of ~2.5 h.
+
+Quality: 4M games at alpha 0.0025 from the 512-256 money run's 44M and 48M raw nets, against the
+old run's next segments (decision loss in millipoints, money / Paskogammon):
+
+    from 44M:  old 4.157 / 8.055   offline 4.015 / 7.905   offline + f16 move choice 4.075 / 8.233
+    from 48M:  old 4.048 / 8.099   offline 3.955 / 7.895   offline + f16 move choice 4.015 / 8.089
+
+Offline TD(λ) is at least as good: the standard from now on (SGD; Adam stays online). Choosing the
+moves with the f16 copy (`train --search f16`, money nets) doubles the speed again (4964 games/s)
+but trails by 0.06 both times: not used. The f32 forward pass is limited by its weight loads (the
+f16 copy is 2.5x faster per evaluation); the move choice is now ~80% of the training time.

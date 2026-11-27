@@ -1,0 +1,15 @@
+9227 decisions, 277 s
+12000 decisions, 340 s
+holding-ahead             1000 decisions (99 of 1200 positions skipped)
+holding-behind            1000 decisions (623 of 1664 positions skipped)
+blitz-attacker            1000 decisions (57 of 1200 positions skipped)
+blitz-defender            1000 decisions (9460 of 10752 positions skipped)
+prime-trapper             1000 decisions (95 of 1200 positions skipped)
+prime-trapped             1000 decisions (2171 of 3289 positions skipped)
+contact-bearoff-ahead     1000 decisions (247 of 1255 positions skipped)
+contact-bearoff-behind    1000 decisions (752 of 1788 positions skipped)
+back-game                 1000 decisions (1709 of 2823 positions skipped)
+escaped-opponent          1000 decisions (217 of 1240 positions skipped)
+late-hit                  1000 decisions (503 of 1531 positions skipped)
+generic                   1000 decisions (223 of 1240 positions skipped)
+wrote data/decisions/moe-types.txt in 340 s

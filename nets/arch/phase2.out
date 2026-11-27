@@ -1,0 +1,1 @@
+nets/arch/phase2.sh: line 22: 93676 Terminated: 15          .venv/bin/python nets/arch/run.py >> nets/arch/run.out 2>&1

@@ -6,11 +6,13 @@ anything from the backgammon package.
 
 Each request is one JSON object on a line of stdin; each answer is one JSON object on a line of
 stdout. Boards use bgsage's layout, always from the perspective of the player in question.
-Every evaluation is for a 1-point match, so gammons and the cube don't count.
+Every evaluation is for a 1-point match, so gammons and the cube don't count, unless the request
+has "money": true: then it is for cubeless money (gammons count 2, backgammons 3; bgsage's money
+setting, with the move chosen by cubeless equity among all moves it evaluated).
 
   {"cmd": "evaluate", "board": [...], "ply": n}
       board is a post-move position: the player who just moved is about to hand over the dice.
-      → {"equity": e}  for the player who just moved, in [-1, 1]
+      → {"equity": e}  for the player who just moved, in [-1, 1] ([-3, 3] for money)
   {"cmd": "best_move", "board": [...], "dice": [d1, d2], "ply": n}
       board is a pre-roll position of the player on roll.
       → {"board": [...], "equity": e}  the board after the best move (still from the mover's
@@ -23,6 +25,7 @@ import sys
 from bgsage import BgBotAnalyzer
 
 MATCH = {"away1": 1, "away2": 1}
+MONEY = {"away1": 0, "away2": 0, "jacoby": False}
 _analyzers = {}
 
 
@@ -34,11 +37,19 @@ def analyzer(ply: int) -> BgBotAnalyzer:
 
 def handle(request: dict) -> dict:
     cmd = request["cmd"]
+    money = request.get("money", False)
     if cmd == "evaluate":
+        if money:
+            result = analyzer(request["ply"]).post_move_analytics(request["board"], **MONEY)
+            return {"equity": result.cubeless_equity}
         result = analyzer(request["ply"]).post_move_analytics(request["board"], **MATCH)
         return {"equity": result.cubeful_equity}
     if cmd == "best_move":
         die1, die2 = request["dice"]
+        if money:
+            result = analyzer(request["ply"]).checker_play(request["board"], die1, die2, **MONEY)
+            best = max(result.moves, key=lambda m: m.cubeless_equity)
+            return {"board": list(best.board), "equity": best.cubeless_equity}
         result = analyzer(request["ply"]).checker_play(request["board"], die1, die2, **MATCH)
         best = result.moves[0]
         return {"board": list(best.board), "equity": best.equity}

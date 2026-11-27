@@ -1,0 +1,8 @@
+--- continuing 512-256 from 32M (decision loss 0.152): plateau after 2 segments without lowering it by 0.005
+512-256      36M: decisions best 75.75%  loss 0.149  pasko 0.258  atta 0.128 prim 0.142 anch 0.163 raci 0.166
+512-256      40M: decisions best 75.79%  loss 0.151  pasko 0.250  atta 0.121 prim 0.151 anch 0.166 raci 0.177   -> plateau
+--- 512-256 best: 36M (decision loss 0.149): bg 49.90  nack 50.97  mean 50.44; f16 copy: bg 49.87  nack 51.01  mean 50.44
+--- continuing 256-256 from 48M (decision loss 0.170): plateau after 2 segments without lowering it by 0.005
+256-256      52M: decisions best 74.90%  loss 0.166  pasko 0.297  atta 0.144 prim 0.156 anch 0.178 raci 0.190
+256-256      56M: decisions best 74.40%  loss 0.169  pasko 0.298  atta 0.147 prim 0.165 anch 0.183 raci 0.188   -> plateau
+--- 256-256 best: 52M (decision loss 0.166): bg 49.57  nack 50.37  mean 49.97; f16 copy: bg 49.65  nack 50.20  mean 49.92

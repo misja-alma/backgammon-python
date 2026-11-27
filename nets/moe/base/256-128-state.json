@@ -1,0 +1,220 @@
+{
+ "objective": "money",
+ "alphas": [
+  0.01,
+  0.005,
+  0.0025
+ ],
+ "phases": [
+  {
+   "alpha": 0.01,
+   "from": null,
+   "segments": [
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-4M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-4M-avg.bgnet",
+     "games": 4000000,
+     "best": 70.44,
+     "loss": 6.993,
+     "pasko": 11.466,
+     "groups": {
+      "attacking": 6.577,
+      "priming": 8.046,
+      "anchoring": 6.388,
+      "racing": 7.347
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-8M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-8M-avg.bgnet",
+     "games": 8000000,
+     "best": 71.43,
+     "loss": 6.388,
+     "pasko": 10.591,
+     "groups": {
+      "attacking": 6.074,
+      "priming": 7.159,
+      "anchoring": 5.892,
+      "racing": 6.712
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-12M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-12M-avg.bgnet",
+     "games": 12000000,
+     "best": 72.33,
+     "loss": 6.123,
+     "pasko": 10.046,
+     "groups": {
+      "attacking": 5.868,
+      "priming": 6.852,
+      "anchoring": 5.406,
+      "racing": 6.635
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-16M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-16M-avg.bgnet",
+     "games": 16000000,
+     "best": 72.18,
+     "loss": 5.998,
+     "pasko": 9.973,
+     "groups": {
+      "attacking": 5.795,
+      "priming": 6.668,
+      "anchoring": 5.568,
+      "racing": 6.189
+     },
+     "games_result": [
+      -0.0513,
+      -0.0541
+     ]
+    }
+   ],
+   "stale": 1,
+   "done": true
+  },
+  {
+   "alpha": 0.005,
+   "from": {
+    "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-16M.bgnet",
+    "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-16M-avg.bgnet",
+    "games": 16000000,
+    "loss": 5.998
+   },
+   "segments": [
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-20M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-20M-avg.bgnet",
+     "games": 20000000,
+     "best": 73.18,
+     "loss": 5.634,
+     "pasko": 9.892,
+     "groups": {
+      "attacking": 5.301,
+      "priming": 6.284,
+      "anchoring": 5.228,
+      "racing": 5.986
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-24M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-24M-avg.bgnet",
+     "games": 24000000,
+     "best": 73.63,
+     "loss": 5.4,
+     "pasko": 9.911,
+     "groups": {
+      "attacking": 5.002,
+      "priming": 5.919,
+      "anchoring": 5.051,
+      "racing": 5.887
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-28M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-28M-avg.bgnet",
+     "games": 28000000,
+     "best": 73.46,
+     "loss": 5.391,
+     "pasko": 9.583,
+     "groups": {
+      "attacking": 4.975,
+      "priming": 5.932,
+      "anchoring": 5.047,
+      "racing": 5.882
+     }
+    }
+   ],
+   "stale": 1,
+   "done": true
+  },
+  {
+   "alpha": 0.0025,
+   "from": {
+    "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-28M.bgnet",
+    "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a005-28M-avg.bgnet",
+    "games": 28000000,
+    "loss": 5.391
+   },
+   "segments": [
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-32M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-32M-avg.bgnet",
+     "games": 32000000,
+     "best": 73.97,
+     "loss": 5.19,
+     "pasko": 9.707,
+     "groups": {
+      "attacking": 4.908,
+      "priming": 5.713,
+      "anchoring": 4.814,
+      "racing": 5.547
+     },
+     "games_result": [
+      -0.042,
+      -0.0398
+     ]
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-36M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-36M-avg.bgnet",
+     "games": 36000000,
+     "best": 74.18,
+     "loss": 5.195,
+     "pasko": 9.552,
+     "groups": {
+      "attacking": 4.825,
+      "priming": 5.524,
+      "anchoring": 4.827,
+      "racing": 5.819
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-40M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-40M-avg.bgnet",
+     "games": 40000000,
+     "best": 74.12,
+     "loss": 5.254,
+     "pasko": 9.607,
+     "groups": {
+      "attacking": 4.934,
+      "priming": 5.58,
+      "anchoring": 4.917,
+      "racing": 5.78
+     }
+    }
+   ],
+   "stale": 2,
+   "done": true
+  }
+ ],
+ "start": {
+  "net": null,
+  "games": 0
+ },
+ "games_played": [
+  16000000,
+  32000000
+ ],
+ "done": true,
+ "plateaued": false,
+ "best": {
+  "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-32M.bgnet",
+  "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-32M-avg.bgnet",
+  "games": 32000000,
+  "loss": 5.19
+ },
+ "final": {
+  "net": "/Users/misja/PycharmProjects/backgammon-python/nets/moe/base/256-128-a0025-32M-avg.bgnet",
+  "loss": 5.19,
+  "f32": [
+   -0.042,
+   -0.0398
+  ],
+  "f16": [
+   -0.0432,
+   -0.0415
+  ]
+ }
+}

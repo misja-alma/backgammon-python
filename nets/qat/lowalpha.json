@@ -1,0 +1,143 @@
+{
+ "start": {
+  "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-28M.bgnet",
+  "games": 28000000,
+  "loss": 0.16
+ },
+ "phases": {
+  "a005": {
+   "from": {
+    "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-28M.bgnet",
+    "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-28M-avg.bgnet",
+    "games": 28000000,
+    "loss": 0.16
+   },
+   "segments": [
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-32M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-32M-avg.bgnet",
+     "games": 32000000,
+     "best": 75.17,
+     "loss": 0.153,
+     "pasko": 0.28,
+     "groups": {
+      "attacking": 0.136,
+      "priming": 0.155,
+      "anchoring": 0.156,
+      "racing": 0.172
+     }
+    },
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-36M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-36M-avg.bgnet",
+     "games": 36000000,
+     "best": 75.36,
+     "loss": 0.152,
+     "pasko": 0.277,
+     "groups": {
+      "attacking": 0.132,
+      "priming": 0.15,
+      "anchoring": 0.167,
+      "racing": 0.166
+     }
+    },
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-40M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-40M-avg.bgnet",
+     "games": 40000000,
+     "best": 75.25,
+     "loss": 0.151,
+     "pasko": 0.271,
+     "groups": {
+      "attacking": 0.129,
+      "priming": 0.149,
+      "anchoring": 0.163,
+      "racing": 0.17
+     }
+    }
+   ],
+   "done": true,
+   "stale": 2
+  },
+  "a0025": {
+   "from": {
+    "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-40M.bgnet",
+    "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a005-40M-avg.bgnet",
+    "games": 40000000,
+    "loss": 0.151
+   },
+   "segments": [
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-44M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-44M-avg.bgnet",
+     "games": 44000000,
+     "best": 75.65,
+     "loss": 0.147,
+     "pasko": 0.266,
+     "groups": {
+      "attacking": 0.125,
+      "priming": 0.149,
+      "anchoring": 0.158,
+      "racing": 0.162
+     }
+    },
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-48M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-48M-avg.bgnet",
+     "games": 48000000,
+     "best": 75.69,
+     "loss": 0.148,
+     "pasko": 0.259,
+     "groups": {
+      "attacking": 0.128,
+      "priming": 0.154,
+      "anchoring": 0.158,
+      "racing": 0.159
+     }
+    },
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-52M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-52M-avg.bgnet",
+     "games": 52000000,
+     "best": 76.19,
+     "loss": 0.144,
+     "pasko": 0.258,
+     "groups": {
+      "attacking": 0.124,
+      "priming": 0.144,
+      "anchoring": 0.156,
+      "racing": 0.158
+     }
+    },
+    {
+     "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-56M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-56M-avg.bgnet",
+     "games": 56000000,
+     "best": 75.92,
+     "loss": 0.146,
+     "pasko": 0.269,
+     "groups": {
+      "attacking": 0.126,
+      "priming": 0.147,
+      "anchoring": 0.156,
+      "racing": 0.161
+     }
+    }
+   ],
+   "done": true,
+   "stale": 1
+  }
+ },
+ "final": {
+  "net": "/Users/misja/PycharmProjects/backgammon-python/nets/qat/f32-576-192-a0025-52M-avg.bgnet",
+  "loss": 0.144,
+  "f32": [
+   50.26,
+   50.96
+  ],
+  "f16": [
+   50.28,
+   51.12
+  ]
+ }
+}

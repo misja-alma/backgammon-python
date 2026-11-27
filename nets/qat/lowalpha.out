@@ -1,0 +1,9 @@
+--- low alpha: continuing f32-576-192 from 28M (decision loss 0.160)
+f32-576-192 alpha 0.005  32M: decisions best 75.17%  loss 0.153  pasko 0.280  atta 0.136 prim 0.155 anch 0.156 raci 0.172
+f32-576-192 alpha 0.005  36M: decisions best 75.36%  loss 0.152  pasko 0.277  atta 0.132 prim 0.150 anch 0.167 raci 0.166
+f32-576-192 alpha 0.005  40M: decisions best 75.25%  loss 0.151  pasko 0.271  atta 0.129 prim 0.149 anch 0.163 raci 0.170   -> phase done
+f32-576-192 alpha 0.0025  44M: decisions best 75.65%  loss 0.147  pasko 0.266  atta 0.125 prim 0.149 anch 0.158 raci 0.162
+f32-576-192 alpha 0.0025  48M: decisions best 75.69%  loss 0.148  pasko 0.259  atta 0.128 prim 0.154 anch 0.158 raci 0.159
+f32-576-192 alpha 0.0025  52M: decisions best 76.19%  loss 0.144  pasko 0.258  atta 0.124 prim 0.144 anch 0.156 raci 0.158
+f32-576-192 alpha 0.0025  56M: decisions best 75.92%  loss 0.146  pasko 0.269  atta 0.126 prim 0.147 anch 0.156 raci 0.161   -> phase done
+--- low alpha best: f32-576-192-a0025-52M-avg (decision loss 0.144, start 0.160): bg 50.26  nack 50.96  mean 50.61; f16 copy: bg 50.28  nack 51.12  mean 50.70

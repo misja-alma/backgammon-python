@@ -1,0 +1,6 @@
+mixed-30M-avg.bgnet backgammon: Win rate 47.93% ± 0.46% (95% CI), 19173/40000 games, 57.5 turns per game, 404s
+mixed-30M-avg.bgnet nackgammon: Win rate 48.27% ± 0.48% (95% CI), 19309/40000 games, 69.7 turns per game, 1053s
+flags-128-128-30M-i8.bgnet backgammon: Win rate 47.68% ± 0.46% (95% CI), 19071/40000 games, 57.4 turns per game, 940s
+flags-128-128-30M-i8.bgnet nackgammon: Win rate 48.43% ± 0.48% (95% CI), 19371/40000 games, 70.0 turns per game, 1053s
+flags-128-128-30M-f16.bgnet backgammon: Win rate 47.98% ± 0.46% (95% CI), 19190/40000 games, 57.6 turns per game, 493s
+flags-128-128-30M-f16.bgnet nackgammon: Win rate 48.39% ± 0.48% (95% CI), 19357/40000 games, 69.8 turns per game, 375s

@@ -43,6 +43,8 @@ class GameConfig:
     opponent: PlayerConfig = field(default_factory=lambda: PlayerConfig(PlayerType.RUST_ENGINE))
     show_engine_game: bool = True  # only relevant when both players are engines
     variant: GameVariant = GameVariant.BACKGAMMON
+    # Double match point: every win counts 1 point (no gammons or backgammons).
+    dmp: bool = True
 
     def player(self, player: Player) -> PlayerConfig:
         return self.me if player == Player.ME else self.opponent
@@ -50,6 +52,24 @@ class GameConfig:
     @property
     def all_engines(self) -> bool:
         return self.me.type.is_engine and self.opponent.type.is_engine
+
+
+class WinType(Enum):
+    """How a game was won; the value is the number of points it is worth (without dmp)."""
+    SINGLE = 1
+    GAMMON = 2       # the loser has borne off no checkers
+    BACKGAMMON = 3   # a gammon, and the loser still has a checker on the bar or in the winner's home board
+
+    @staticmethod
+    def of(position: Position, winner: Player) -> "WinType":
+        """The win type of a finished game, from its final position."""
+        loser = winner.other_player()
+        if position.get_checkers(loser, 0) > 0:
+            return WinType.SINGLE
+        # The winner's home board is the loser's points 19-24 (in the loser's numbering); 25 is the bar.
+        if any(position.get_checkers(loser, point) > 0 for point in range(19, 26)):
+            return WinType.BACKGAMMON
+        return WinType.GAMMON
 
 
 def player_name(player: Player) -> str:
@@ -68,8 +88,9 @@ def format_move(move: Move) -> str:
 
 
 class Game:
-    """A single game of backgammon or nackgammon (no doubling cube, no gammons). Contains no UI
-    code.
+    """A single game of backgammon or nackgammon, without doubling cube. With `config.dmp`
+    (double match point) every win is worth 1 point; otherwise a gammon is worth 2 and a
+    backgammon 3 (see WinType). Contains no UI code.
 
     Flow: start() does the opening roll; then, as long as the game is not over, the side to move
     plays a move with the current dice via play() (or play_position() for engines), after which
@@ -85,6 +106,7 @@ class Game:
         self.position.setup_starting_position(config.variant)
         self.dice: Optional[tuple[int, int]] = None
         self.winner: Optional[Player] = None
+        self.win_type: Optional[WinType] = None   # set when the game is over, also with dmp
         self.turns = 0
         self._legal_moves: Optional[set[Move]] = None
 
@@ -93,6 +115,28 @@ class Game:
     @property
     def is_over(self) -> bool:
         return self.winner is not None
+
+    @property
+    def points(self) -> Optional[int]:
+        """Points won by the winner (None while the game is going on): always 1 with dmp."""
+        if self.win_type is None:
+            return None
+        return 1 if self.config.dmp else self.win_type.value
+
+    def result_text(self) -> str:
+        """E.g. 'ME wins', or without dmp 'OPPONENT wins a gammon (2 points)'."""
+        name = player_name(self.winner)
+        if self.config.dmp:
+            return f"{name} wins"
+        if self.win_type == WinType.SINGLE:
+            return f"{name} wins (1 point)"
+        return f"{name} wins a {self.win_type.name.lower()} ({self.points} points)"
+
+    def _set_winner(self, winner: Player) -> None:
+        self.winner = winner
+        self.win_type = WinType.of(self.position, winner)
+        self.dice = None
+        self._legal_moves = None
 
     @property
     def runs_in_rust(self) -> bool:
@@ -159,10 +203,8 @@ class Game:
         self.log(f"{player_name(mover)} rolls {self.dice[0]}-{self.dice[1]}: {format_move(move)}")
 
         if self.position.get_checkers(mover, 0) == CHECKERS_PER_PLAYER:
-            self.winner = mover
-            self.dice = None
-            self._legal_moves = None
-            self.log(f"{player_name(mover)} wins")
+            self._set_winner(mover)
+            self.log(self.result_text())
         else:
             self._set_dice((self._roll_die(), self._roll_die()))
 
@@ -170,7 +212,8 @@ class Game:
         """The legal move that leads to position_after (e.g. as chosen by an engine).
 
         When position_after bears off the mover's last checker, any legal move that does the same
-        is returned: without gammons all winning moves are equal. Engines differ on whether the
+        is returned: all winning moves are equal (the win type depends only on the loser's
+        checkers). Engines differ on whether the
         last checker may come off with one die when both dice could be played (e.g. bgsage plays
         2/off with 4-1, where our move generator requires 2/1/off)."""
         legal = self.legal_moves()
@@ -199,7 +242,8 @@ class Game:
         if not self.legal_moves():
             return ()
         position_after, _ = AnalyzerProxy.best_move(self.position, *self.dice,
-                                                    engine=config.type.engine, depth=config.depth)
+                                                    engine=config.type.engine, depth=config.depth,
+                                                    money=not self.config.dmp)
         return self.find_move(position_after)
 
     def play_in_rust(self, seed: int) -> None:
@@ -209,11 +253,10 @@ class Game:
             raise ValueError("Only a hidden Rust engine vs Rust engine game can run in Rust")
         winner, position, turns = AnalyzerProxy.play_rust_game(
             self.config.me.depth, self.config.opponent.depth, seed,
-            nackgammon=self.config.variant == GameVariant.NACKGAMMON)
+            nackgammon=self.config.variant == GameVariant.NACKGAMMON, money=not self.config.dmp)
         self.position = position
         self.turns = turns
-        self.dice = None
-        self.winner = winner
+        self._set_winner(winner)
 
     def play_to_end(self, is_cancelled: Callable[[], bool] = lambda: False) -> None:
         """Play the rest of the game with engines only (used when the game is not displayed)."""
@@ -225,9 +268,12 @@ class MoveBuilder:
     """Builds a human's move one half-move at a time, only allowing steps that can still be
     completed to a legal move."""
 
-    def __init__(self, legal_moves: set[Move]):
+    def __init__(self, legal_moves: set[Move], dice: Optional[tuple[int, int]] = None):
         self.legal_moves = legal_moves
         self.half_moves: list[HalfMove] = []
+        # The die each half-move used (try_step), None for half-moves entered by target.
+        self.dice_used: list[Optional[int]] = []
+        self.dice = dice
         self._full_length = max((len(m) for m in legal_moves), default=0)
 
     def _continuations(self) -> list[Move]:
@@ -252,11 +298,60 @@ class MoveBuilder:
         if best is None:
             return False
         self.half_moves.extend(best)
+        self.dice_used.extend([None] * len(best))
         return True
+
+    def remaining_dice(self) -> list[int]:
+        """The dice not used yet (four for doubles), with the dice given at construction."""
+        if self.dice is None:
+            return []
+        dice = [self.dice[0]] * 4 if self.dice[0] == self.dice[1] else list(self.dice)
+        for used in self.dice_used:
+            if used in dice:
+                dice.remove(used)
+        return dice[:max(0, len(dice) - self.dice_used.count(None))]
+
+    @staticmethod
+    def _fits(half: HalfMove, die: int) -> bool:
+        """Whether the half-move can be played with this die (bearing off may use a higher die;
+        the legal moves already say when that is allowed)."""
+        start, target = half
+        return start - target == die or (target == 0 and die > start)
+
+    def _assignable(self, rest: Move, dice: list[int]) -> bool:
+        """Whether the half-moves can be played with these dice, in some order of the dice."""
+        if not rest:
+            return True
+        for i, die in enumerate(dice):
+            if (i == 0 or die != dice[i - 1]) and self._fits(rest[0], die) and \
+                    self._assignable(rest[1:], dice[:i] + dice[i + 1:]):
+                return True
+        return False
+
+    def try_step(self, start: int, die: int) -> bool:
+        """Move the checker on start by one die (bearing off when it goes past the bearoff
+        line), if that can still be completed to a legal move with the other dice."""
+        remaining = self.remaining_dice()
+        if die not in remaining:
+            return False
+        half = (start, max(start - die, 0))
+        rest_dice = list(remaining)
+        rest_dice.remove(die)
+        for rest in self._continuations():
+            if rest and rest[0] == half and self._fits(half, die) and self._assignable(rest[1:], sorted(rest_dice)):
+                self.half_moves.append(half)
+                self.dice_used.append(die)
+                return True
+        return False
 
     def undo(self) -> None:
         if self.half_moves:
             self.half_moves.pop()
+            self.dice_used.pop()
+
+    def reset(self) -> None:
+        self.half_moves.clear()
+        self.dice_used.clear()
 
     def can_move_from(self, start: int) -> bool:
         return any(rest and rest[0][0] == start for rest in self._continuations())

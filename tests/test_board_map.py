@@ -39,19 +39,20 @@ class BoardMapLayoutTest(unittest.TestCase):
                 self.assertLess(m.board_width - 14 * m.point_width, 14)
                 self.assertEqual(20 * m.checker_radius, m.board_height)
 
-    def test_board_is_centered_horizontally(self):
+    def test_board_is_centered_right_of_the_panel(self):
         for width, height in SIZES:
             with self.subTest(size=(width, height)):
                 m = BoardMap(width, height)
-                left = m.board_x
+                left = m.board_x - m.panel_width
                 right = width - (m.board_x + m.board_width)
+                self.assertGreater(left, 0)
                 self.assertLessEqual(abs(left - right), 1)
 
-    def test_default_size_layout_unchanged(self):
+    def test_default_size_layout(self):
         m = BoardMap(1024, 768)
-        self.assertEqual(m.board_margin, m.board_x)
+        self.assertEqual(m.panel_width + m.board_margin, m.board_x)
         self.assertEqual(m.board_margin, m.board_y)
-        self.assertEqual(1024 - 2 * m.board_margin, m.board_width)
+        self.assertEqual(1024 - m.panel_width - 2 * m.board_margin, m.board_width)
 
 
 if __name__ == '__main__':

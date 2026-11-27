@@ -1,0 +1,7 @@
+Training 256-576-192-1 td-nack-v1, 12000000 games for 4000000 mixed games: Sgd, alpha 0.01, lambda 0.7, seed 5304, 12 threads -> /Users/misja/PycharmProjects/backgammon-python/nets/qat/f16-576-192-16M.bgnet
+Quantization-aware: games played and judged by the f16 evaluation copy
+  1000000 games ( 13000000 total)  alpha 0.01000     860 games/s   56.1 turns/game  vs pip count   4.4%  saved
+  2000000 games ( 14000000 total)  alpha 0.01000     861 games/s   56.1 turns/game  vs pip count   4.4%  saved
+  3000000 games ( 15000000 total)  alpha 0.01000     861 games/s   56.1 turns/game  vs pip count   4.3%  saved
+  4000000 games ( 16000000 total)  alpha 0.01000     835 games/s   57.9 turns/game  vs pip count  99.4%  saved
+average of the last 500000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/qat/f16-576-192-16M-avg.bgnet  vs pip count  99.3%

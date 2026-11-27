@@ -137,34 +137,68 @@ class GameControllerTest(unittest.TestCase):
         self.assertEqual("Game stopped", self.log.lines[-1])
 
     def test_human_enters_a_move_by_clicking(self):
+        # Opening roll: ME 3, OPPONENT 1, so ME plays 3-1.
         self.controller.start(config(PlayerType.HUMAN, PlayerType.HUMAN), rng=ScriptedDice([3, 1, 6, 5]))
         self.controller.update()
         self.assertTrue(self.controller.is_human_turn)
+        self.assertEqual([(3, False), (1, False)], self.controller.display_dice())   # high left
 
-        self.controller.handle_click(8, is_left_click=True)
-        self.assertEqual(8, self.controller.selected_point)
-        self.controller.handle_click(5, is_left_click=True)
-        self.assertIsNone(self.controller.selected_point)
+        self.controller.handle_click(8, is_left_click=True)          # the left die: 8/5
+        self.assertEqual([(3, True), (1, False)], self.controller.display_dice())
         # The half-entered move is shown on the board.
         self.assertEqual(1, self.controller.display_position().get_checkers(Player.ME, 5))
-
-        self.controller.handle_click(6, is_left_click=True)
-        self.controller.handle_click(5, is_left_click=True)
+        self.controller.handle_click(6, is_left_click=True)          # the other die: 6/5
+        self.assertTrue(self.controller.move_builder.is_complete)
+        self.assertEqual(Player.ME, self.controller.game.current_player)   # waits for the dice click
+        self.controller.handle_click(13, is_left_click=True)         # ignored: all dice played
+        self.controller.click_dice()
         self.assertEqual(Player.OPPONENT, self.controller.game.current_player)
         self.assertEqual(2, self.controller.game.position.get_checkers(Player.ME, 5))
 
-    def test_right_click_cancels_selection_then_undoes(self):
+    def test_right_click_or_dice_click_swaps_dice(self):
+        self.controller.start(config(PlayerType.HUMAN, PlayerType.HUMAN), rng=ScriptedDice([3, 1]))
+        self.controller.update()
+        self.controller.handle_click(None, is_left_click=False)
+        self.assertEqual([(1, False), (3, False)], self.controller.display_dice())
+        self.controller.handle_click(6, is_left_click=True)          # now the 1: 6/5
+        self.assertEqual(((6, 5),), self.controller.move_builder.move)
+        self.controller.click_dice()                                 # not complete: swap
+        self.assertEqual([(3, False), (1, True)], self.controller.display_dice())
+
+    def test_other_die_when_the_left_one_cant_be_played(self):
+        # ME plays 5-3: 24/19 with the 5 is blocked (OPPONENT's 6-point), so the 3 plays 24/21.
+        self.controller.start(config(PlayerType.HUMAN, PlayerType.HUMAN), rng=ScriptedDice([5, 3]))
+        self.controller.update()
+        self.controller.handle_click(24, is_left_click=True)
+        self.assertEqual(((24, 21),), self.controller.move_builder.move)
+        self.assertEqual([(5, False), (3, True)], self.controller.display_dice())
+
+    def test_right_click_after_the_last_checker_takes_the_move_back(self):
         self.controller.start(config(PlayerType.HUMAN, PlayerType.HUMAN), rng=ScriptedDice([3, 1]))
         self.controller.update()
         self.controller.handle_click(8, is_left_click=True)
-        self.controller.handle_click(5, is_left_click=True)
         self.controller.handle_click(6, is_left_click=True)
+        self.assertTrue(self.controller.move_builder.is_complete)
+        self.controller.handle_click(None, is_left_click=False)
+        self.assertEqual((), self.controller.move_builder.move)
+        self.assertEqual(Player.ME, self.controller.game.current_player)
 
-        self.controller.handle_click(None, is_left_click=False)
-        self.assertIsNone(self.controller.selected_point)
-        self.assertEqual(1, len(self.controller.move_builder.half_moves))
-        self.controller.handle_click(None, is_left_click=False)
-        self.assertEqual(0, len(self.controller.move_builder.half_moves))
+    def test_doubles_are_four_clicks(self):
+        self.controller.start(config(PlayerType.HUMAN, PlayerType.HUMAN), rng=ScriptedDice([3, 1, 4, 4, 2, 2]))
+        self.controller.update()
+        self.controller.handle_click(8, is_left_click=True)
+        self.controller.handle_click(6, is_left_click=True)
+        self.controller.click_dice()
+        self.clock.now += GameController.PASS_DELAY
+        self.controller.update()
+        self.controller.update()
+        self.assertEqual(Player.OPPONENT, self.controller.game.current_player)
+        self.assertEqual((4, 4), self.controller.game.dice)
+        for _ in range(4):
+            self.controller.handle_click(13, is_left_click=True)
+        self.assertEqual([(4, True), (4, True)], self.controller.display_dice())
+        self.controller.click_dice()
+        self.assertEqual(Player.ME, self.controller.game.current_player)
 
     def test_clicks_are_ignored_on_an_engine_turn(self):
         self.controller.start(config(PlayerType.RUST_ENGINE, PlayerType.HUMAN), rng=ScriptedDice([3, 1]))
@@ -203,6 +237,21 @@ class GameControllerTest(unittest.TestCase):
         self.assertEqual(Settings.rust_network, self.controller.worker.rust_network)
         self.controller.worker.submit(lambda: None).result()
         self.assertFalse(any("placeholder" in line for line in self.log.lines))
+
+    def test_money_games_use_the_money_net(self):
+        from backgammon.game.position import GameVariant
+        from backgammon.game.settings import Settings
+        human = config(PlayerType.HUMAN, PlayerType.HUMAN)
+        human.dmp = False
+        # Without a money net: the double match point net.
+        with patch.object(Settings, "rust_money_network", None):
+            self.controller.start(human, rng=random.Random(1))
+            self.assertEqual(Settings.rust_network, self.controller.worker.rust_network)
+        with patch.object(Settings, "rust_money_network", "nets/money.bgnet"), \
+                patch.object(Settings, "rust_nackgammon_money_network", "nets/nack-money.bgnet"):
+            self.assertEqual("nets/money.bgnet", Settings.rust_network_for(GameVariant.BACKGAMMON, dmp=False))
+            self.assertEqual("nets/nack-money.bgnet", Settings.rust_network_for(GameVariant.NACKGAMMON, dmp=False))
+            self.assertEqual(Settings.rust_network, Settings.rust_network_for(GameVariant.BACKGAMMON, dmp=True))
 
 
 if __name__ == '__main__':

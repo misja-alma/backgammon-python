@@ -13,6 +13,18 @@
 //! `--optimizer adam` applies the TD updates with Adam instead of plain SGD (see td_training.rs);
 //! use a much smaller `--alpha`, e.g. 0.0001.
 //!
+//! `--quantize f16|i8`: quantization-aware training; every game is played and judged by the net's
+//! f16 or int8 evaluation copy, made at the start of the game (see td_training.rs). The saved
+//! nets are f32; make their evaluation copy with `make_eval_net --precision f16|i8`.
+//!
+//! `--search f16`: money nets only; the net's f16 evaluation copy (made at the start of every
+//! game) chooses the moves, about 2.5x faster than the f32 net, while the values, targets and
+//! gradients of the TD updates stay the f32 net's (see td_training.rs).
+//!
+//! `--objective money` trains a new net with 5 outputs (win, win gammon, win backgammon, lose
+//! gammon, lose backgammon) for cubeless money play; the default `dmp` has one output, the
+//! winning chance. A resumed net keeps its own objective.
+//!
 //! `--bearoff PATH` stops every game at its first bearoff position and uses the exact winning
 //! chance from that two-sided bearoff database as the final target (see td_training.rs).
 //!
@@ -46,7 +58,7 @@ use std::time::Instant;
 use backgammon_rust::encoding::Encoding;
 use backgammon_rust::evaluator::PipCountEvaluator;
 use backgammon_rust::game::{Dice, Variant};
-use backgammon_rust::neural_net::{NeuralNet, NeuralNetEvaluator, DEFAULT_HIDDEN};
+use backgammon_rust::neural_net::{NeuralNet, NeuralNetEvaluator, Objective, DEFAULT_HIDDEN};
 use backgammon_rust::td_training::{win_rate, Optimizer, TdTrainer};
 
 struct Options {
@@ -56,6 +68,7 @@ struct Options {
     lambda: f32,
     seed: u64,
     hidden: Vec<usize>,
+    objective: Objective,
     encoding: Option<Encoding>,
     /// None: mixed, alternating backgammon and nackgammon.
     variant: Option<Variant>,
@@ -68,6 +81,8 @@ struct Options {
     optimizer: Optimizer,
     threads: usize,
     bearoff: Option<PathBuf>,
+    quantize: Option<backgammon_rust::eval_net::Kind>,
+    search: Option<backgammon_rust::eval_net::Kind>,
     /// The opened `bearoff` database.
     bearoff_db: Option<std::sync::Arc<backgammon_rust::bearoff::BearoffDb>>,
     perturb: f32,
@@ -75,10 +90,10 @@ struct Options {
 }
 
 const USAGE: &str = "usage: train [--games N] [--alpha A] [--alpha-final A] [--lambda L] [--seed S] [--hidden 128,128,128]
-             [--encoding counts|td|flags|nack] [--variant backgammon|nackgammon|mixed]
+             [--objective dmp|money] [--encoding counts|td|flags|nack] [--variant backgammon|nackgammon|mixed]
              [--out FILE] [--resume FILE] [--report N] [--eval-pairs N] [--keep-checkpoints]
              [--average-last N] [--optimizer sgd|adam] [--threads N] [--bearoff data/bearoff-6x15.bd]
-             [--perturb SIGMA] [--shrink S]";
+             [--quantize f16|i8] [--search f16] [--perturb SIGMA] [--shrink S]";
 
 fn parse_args() -> Result<Options, String> {
     let mut o = Options {
@@ -88,6 +103,7 @@ fn parse_args() -> Result<Options, String> {
         lambda: 0.7,
         seed: 1,
         hidden: DEFAULT_HIDDEN.to_vec(),
+        objective: Objective::Dmp,
         encoding: None,
         variant: Some(Variant::Backgammon),
         out: PathBuf::from("nets/td.bgnet"),
@@ -99,6 +115,8 @@ fn parse_args() -> Result<Options, String> {
         optimizer: Optimizer::Sgd,
         threads: 1,
         bearoff: None,
+        quantize: None,
+        search: None,
         bearoff_db: None,
         perturb: 0.0,
         shrink: 0.0,
@@ -126,6 +144,8 @@ fn parse_args() -> Result<Options, String> {
             "--hidden" => {
                 o.hidden = value.split(',').map(|s| s.trim().parse::<usize>()).collect::<Result<_, _>>().map_err(|e| bad(&e))?
             }
+            "--objective" => o.objective = Objective::from_name(value)
+                .ok_or_else(|| format!("bad value for --objective: {} (dmp or money)", value))?,
             "--encoding" => o.encoding = Some(match value.as_str() {
                 "counts" => Encoding::CountsPips,
                 "td" => Encoding::TdCounts,
@@ -151,6 +171,15 @@ fn parse_args() -> Result<Options, String> {
             "--shrink" => o.shrink = value.parse().map_err(|e| bad(&e))?,
             "--threads" => o.threads = value.parse().map_err(|e| bad(&e))?,
             "--bearoff" => o.bearoff = Some(PathBuf::from(value)),
+            "--quantize" => o.quantize = Some(match value.as_str() {
+                "f16" => backgammon_rust::eval_net::Kind::F16,
+                "i8" => backgammon_rust::eval_net::Kind::I8,
+                _ => return Err(format!("--quantize f16 or i8, not {}", value)),
+            }),
+            "--search" => o.search = Some(match value.as_str() {
+                "f16" => backgammon_rust::eval_net::Kind::F16,
+                _ => return Err(format!("--search f16, not {}", value)),
+            }),
             "--average-last" => o.average_last = value.parse().map_err(|e| bad(&e))?,
             "--eval-pairs" => o.eval_pairs = value.parse().map_err(|e| bad(&e))?,
             _ => return Err(format!("unknown option {}\n{}", flag, USAGE)),
@@ -250,7 +279,7 @@ fn main() {
                 _ => net,
             }
         }
-        None => NeuralNet::new_random(o.encoding.unwrap_or(Encoding::TdCounts), &o.hidden, o.seed),
+        None => NeuralNet::new_random_for(o.encoding.unwrap_or(Encoding::TdCounts), &o.hidden, o.objective, o.seed),
     };
     if o.perturb > 0.0 || o.shrink > 0.0 {
         net.perturb(o.shrink, o.perturb, o.seed ^ 0x5eed);
@@ -266,6 +295,12 @@ fn main() {
     if let Some(path) = &o.bearoff {
         o.bearoff_db = Some(std::sync::Arc::new(exit_on_error(backgammon_rust::bearoff::BearoffDb::open(path))));
         println!("Games stop at bearoff positions, with the exact value from {}", path.display());
+    }
+    if let Some(kind) = o.quantize {
+        println!("Quantization-aware: games played and judged by the {} evaluation copy", kind.name());
+    }
+    if let Some(kind) = o.search {
+        println!("Moves chosen by the {} evaluation copy (made per game); TD updates in f32", kind.name());
     }
     let o = o;
     let reporter = Reporter { o: &o, started: Instant::now() };
@@ -286,6 +321,8 @@ fn train_serial(o: &Options, net: NeuralNet, reporter: &Reporter) {
     let start_games = net.games_trained;
     let mut trainer = TdTrainer::with_optimizer(net, o.alpha, o.lambda, o.optimizer);
     trainer.bearoff = o.bearoff_db.clone();
+    trainer.quantize = o.quantize;
+    trainer.search = o.search;
     // Continue the dice where an earlier run stopped, so a resumed run doesn't replay its games.
     let mut dice = Dice::new(o.seed.wrapping_mul(0x9e3779b97f4a7c15).wrapping_add(start_games));
     let mut turns_total = 0u64;
@@ -340,6 +377,8 @@ fn train_parallel(o: &Options, net: NeuralNet, reporter: &Reporter) {
                 let mut base = start.params().to_vec();
                 let mut trainer = TdTrainer::with_optimizer(start, o.alpha, o.lambda, o.optimizer);
                 trainer.bearoff = o.bearoff_db.clone();
+                trainer.quantize = o.quantize;
+                trainer.search = o.search;
                 loop {
                     let game = next_game.fetch_add(1, Ordering::Relaxed);
                     if game > o.games {

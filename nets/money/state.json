@@ -1,0 +1,40 @@
+{
+ "segments": [
+  {
+   "best": 71.29,
+   "loss": 6.854,
+   "pasko": 11.087,
+   "groups": {
+    "attacking": 6.582,
+    "priming": 7.841,
+    "anchoring": 5.878,
+    "racing": 7.455
+   },
+   "dmp_best": 69.69,
+   "dmp_loss": 0.267,
+   "dmp_net_loss": 8.898,
+   "games": 4000000
+  },
+  {
+   "best": 72.77,
+   "loss": 6.1,
+   "pasko": 10.349,
+   "groups": {
+    "attacking": 5.851,
+    "priming": 6.94,
+    "anchoring": 5.518,
+    "racing": 6.374
+   },
+   "dmp_best": 70.55,
+   "dmp_loss": 0.25,
+   "dmp_net_loss": 8.477,
+   "games": 8000000
+  }
+ ],
+ "best": [
+  8000000,
+  6.1
+ ],
+ "stale": 0,
+ "done": false
+}

@@ -2,6 +2,7 @@ pub mod evaluator;
 pub mod bearoff;
 pub mod encoding;
 pub mod neural_net;
+pub mod eval_net;
 pub mod td_training;
 pub mod fast_hash;
 pub mod transposition_table;
@@ -12,6 +13,7 @@ pub mod simple_position;
 pub mod cache_friendly_position;
 pub mod utils;
 pub mod rust_analyzer;
+pub mod moe;
 
 pub use position::{Position, Player};
 pub use utils::Utils;
@@ -136,6 +138,59 @@ fn best_move(
 }
 
 #[cfg(feature = "extension-module")]
+/// Every move with the given dice, best first (the passed position when none is legal), searched
+/// `max_depth` roll levels: a list of (me_checkers, opp_checkers, turn, equity for the mover,
+/// [win, win gammon, win backgammon, lose gammon, lose backgammon] for the mover, NaN where the
+/// net doesn't know them).
+#[pyfunction]
+#[pyo3(signature = (me_checkers, opp_checkers, turn, cube_value, cube_owner, die1, die2, max_depth))]
+#[allow(clippy::too_many_arguments)]
+fn analyze_moves(
+    py: Python<'_>,
+    me_checkers: Vec<u8>,
+    opp_checkers: Vec<u8>,
+    turn: u8,
+    cube_value: u32,
+    cube_owner: Option<u8>,
+    die1: i32,
+    die2: i32,
+    max_depth: u32,
+) -> PyResult<Vec<(Vec<u8>, Vec<u8>, u8, f64, Vec<f64>)>> {
+    let pos = build_position(me_checkers, opp_checkers, turn, cube_value, cube_owner)
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let moves = py.allow_threads(move || ANALYZER.with(|a| a.borrow().analyze_moves(&pos, die1, die2, max_depth)));
+    Ok(moves.into_iter().map(|(p, equity, outcome)| {
+        let me_out: Vec<u8> = (0..26).map(|i| p.get_checkers(Player::Me, i).unwrap()).collect();
+        let opp_out: Vec<u8> = (0..26).map(|i| p.get_checkers(Player::Opponent, i).unwrap()).collect();
+        let turn_out = if p.get_turn() == Player::Me { 1u8 } else { 0u8 };
+        (me_out, opp_out, turn_out, equity, outcome.to_vec())
+    }).collect())
+}
+
+#[cfg(feature = "extension-module")]
+/// The side to move's equity and outcome probabilities (as in `analyze_moves`) before it rolls,
+/// searching `max_depth` roll levels.
+#[pyfunction]
+#[pyo3(signature = (me_checkers, opp_checkers, turn, cube_value, cube_owner, max_depth))]
+fn analyze_position(
+    py: Python<'_>,
+    me_checkers: Vec<u8>,
+    opp_checkers: Vec<u8>,
+    turn: u8,
+    cube_value: u32,
+    cube_owner: Option<u8>,
+    max_depth: u32,
+) -> PyResult<(f64, Vec<f64>)> {
+    let pos = build_position(me_checkers, opp_checkers, turn, cube_value, cube_owner)
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let on_roll = pos.get_turn();
+    Ok(py.allow_threads(move || ANALYZER.with(|a| {
+        let a = a.borrow();
+        (a.equity(&pos, on_roll, max_depth), a.outcome_for_turn(&pos, max_depth).to_vec())
+    })))
+}
+
+#[cfg(feature = "extension-module")]
 #[pyfunction]
 fn clear_cache() {
     // Note: the analyzer (and its cache) is thread-local, so this only clears the cache of the
@@ -180,13 +235,20 @@ fn play_game(py: Python<'_>, me_depth: u32, opponent_depth: u32, seed: u64, nack
 }
 
 /// Use the neural net in the weight file at `path` as the engine's evaluator, on this thread
-/// (like the cache, the analyzer is per thread). Returns a description of the net.
+/// (like the cache, the analyzer is per thread): a trained net, or an evaluation copy in lower
+/// precision (see eval_net.rs). Returns a description of the net.
 #[cfg(feature = "extension-module")]
 #[pyfunction]
 fn load_network(path: &str) -> PyResult<String> {
-    let net = NeuralNet::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    if path.ends_with(".bgmoe") {
+        let moe = moe::MoeNet::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
+        let description = moe.description();
+        ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(moe)));
+        return Ok(description);
+    }
+    let net = eval_net::EvalNet::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let description = net.description();
-    ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(NeuralNetEvaluator { net })));
+    ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(eval_net::EvalNetEvaluator { net })));
     Ok(description)
 }
 
@@ -206,6 +268,19 @@ fn load_bearoff(path: Option<&str>) -> PyResult<String> {
                                          |db| format!("two-sided bearoff database 6x{}", db.checkers()));
     ANALYZER.with(|a| a.borrow_mut().set_bearoff(db));
     Ok(description)
+}
+
+/// Play for cubeless money (`money=True`: a gammon counts 2, a backgammon 3) or for double match
+/// point (every win counts 1, the default), on this thread. Clears the cache.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+fn set_money_scoring(money: bool) {
+    let scoring = if money { evaluator::Scoring::Money } else { evaluator::Scoring::Dmp };
+    ANALYZER.with(|a| {
+        if a.borrow().scoring() != scoring {
+            a.borrow_mut().set_scoring(scoring);
+        }
+    });
 }
 
 /// Go back to the placeholder evaluator on this thread.
@@ -235,6 +310,9 @@ fn backgammon_rust(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_bearoff, m)?)?;
     m.add_function(wrap_pyfunction!(use_placeholder_evaluator, m)?)?;
     m.add_function(wrap_pyfunction!(evaluator_name, m)?)?;
+    m.add_function(wrap_pyfunction!(set_money_scoring, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_moves, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_position, m)?)?;
     Ok(())
 }
 #[cfg(test)]

@@ -98,7 +98,7 @@ engine also has a Rust implementation that is compiled into a native Python exte
 - **Players**: `Player.ME` (=1, drawn white, bottom-right home) and `Player.OPPONENT` (=0, drawn
   red). Checker arrays are named after the player, not a colour: `me_checkers` /
   `opponent_checkers` in Python (and in Rust's `SimplePosition`).
-- **Equity** is a float in `[-1, 1]` (gammons are not scored yet): +1 is a certain win.
+- **Equity** is a float in `[-1, 1]` (the engines don't value gammons yet): +1 is a certain win.
   Internally the engines work with equity *for the side to move* and negate it for the other
   player. While gammons are not scored, winning chance = (equity + 1) / 2, which the Analyze menu
   shows next to the equity.
@@ -193,8 +193,8 @@ the dialog panel each frame and runs until OK/Enter (returns `result()`) or Canc
   changed cache size is applied on the worker thread, after any running search; the cache then
   starts empty.
 - `PlaySetupDialog` — for each player, Human / Python engine / Rust engine, plus a search
-  depth (0–4, enabled for engines). Also a **Show game** checkbox, enabled only when both players
-  are engines. Returns a `GameConfig` and remembers the last choice.
+  depth (0–4, enabled for engines); the game (Backgammon / Nackgammon); a **Double match point**
+  checkbox (no gammons); and a **Show game** checkbox, enabled only when both players are engines. Returns a `GameConfig` and remembers the last choice.
 
 ### `GameController` — driving a game without blocking
 Created by `Board`. `update()` runs every frame:
@@ -249,13 +249,17 @@ memory for the Rust engine's cache. `Board` applies `rust_cache_mb` at startup t
 engine and depth in `GameConfig`.
 
 ### `Game`, `GameConfig`, `MoveBuilder` (`game.py`)
-UI-independent game logic (no doubling cube, no gammons):
-- `PlayerType` (`HUMAN`, `PYTHON_ENGINE`, `RUST_ENGINE`), `PlayerConfig(type, depth)`,
-  `GameConfig(me, opponent, show_engine_game)`.
+UI-independent game logic (no doubling cube):
+- `PlayerType` (`HUMAN`, `PYTHON_ENGINE`, `RUST_ENGINE`, `BGSAGE_ENGINE`), `PlayerConfig(type, depth)`,
+  `GameConfig(me, opponent, show_engine_game, variant, dmp)`.
+- `WinType.of(position, winner)`: `SINGLE`, `GAMMON` (the loser has borne off nothing) or
+  `BACKGAMMON` (a gammon with a loser's checker on the bar or in the winner's home board), from
+  the final position. `Game.win_type` is set at the end of every game; `Game.points` is 1 with
+  `dmp` (double match point, the default) and otherwise the win type's 1, 2 or 3.
 - `Game.start()` — the opening roll: each player rolls one die, ties are rerolled, and the higher
   die moves first, playing both dice.
 - `Game.play(move)` checks the move against `legal_moves()`, applies it, logs it, detects the
-  winner (all 15 checkers off) and otherwise rolls for the next player. `engine_move()` asks the
+  winner (all 15 checkers off) and logs the result (`result_text()`) and otherwise rolls for the next player. `engine_move()` asks the
   configured engine for its choice (slow, so it runs on the worker). `find_move()` turns the
   engine's resulting position back into a move. `play_to_end()` plays out an engine-only game.
   `play_in_rust(seed)` hands a hidden Rust-vs-Rust game (`runs_in_rust`) to Rust in one call.

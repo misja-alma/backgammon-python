@@ -1,0 +1,18 @@
+--- 512-256: from nets/arch/512-256-36M.bgnet; alphas 0.005,0.0025, plateau after 2 segments without lowering the decision loss (winning-chance points, dmp scoring) by 0.005 (later phases 60%); games every 16M and for the final net
+--- 512-256: alpha 0.005 from 512-256-36M.bgnet (decision loss 0.149)
+512-256 alpha 0.005  40M: decisions best 76.20%  loss 0.144  pasko 0.246  atta 0.118 prim 0.144 anch 0.157 raci 0.167
+512-256 alpha 0.005  44M: decisions best 76.56%  loss 0.140  pasko 0.251  atta 0.119 prim 0.145 anch 0.148 raci 0.155
+512-256 alpha 0.005  48M: decisions best 76.69%  loss 0.138  pasko 0.251  atta 0.115 prim 0.133 anch 0.152 raci 0.160   | bg 50.39  nack 51.54  mean 50.97
+512-256 alpha 0.005  52M: decisions best 76.74%  loss 0.135  pasko 0.239  atta 0.110 prim 0.139 anch 0.142 raci 0.157   -> phase done
+--- 512-256: alpha 0.0025 from 512-256-a005-52M.bgnet (decision loss 0.135)
+512-256 alpha 0.0025  56M: decisions best 76.78%  loss 0.135  pasko 0.249  atta 0.111 prim 0.136 anch 0.148 raci 0.154
+512-256 alpha 0.0025  60M: decisions best 77.07%  loss 0.136  pasko 0.243  atta 0.110 prim 0.135 anch 0.150 raci 0.156   -> phase done
+--- 512-256 best: 512-256-a005-52M-avg (decision loss 0.135): bg 50.68  nack 51.25  mean 50.97; f16 copy: bg 50.66  nack 51.19  mean 50.92
+--- 256-256: from nets/arch/256-256-52M.bgnet; alphas 0.005,0.0025, plateau after 2 segments without lowering the decision loss (winning-chance points, dmp scoring) by 0.005 (later phases 60%); games every 16M and for the final net
+--- 256-256: alpha 0.005 from 256-256-52M.bgnet (decision loss 0.166)
+256-256 alpha 0.005  56M: decisions best 75.05%  loss 0.164  pasko 0.277  atta 0.138 prim 0.160 anch 0.181 raci 0.183
+256-256 alpha 0.005  60M: decisions best 75.03%  loss 0.162  pasko 0.279  atta 0.147 prim 0.152 anch 0.174 raci 0.176   -> phase done
+--- 256-256: alpha 0.0025 from 256-256-a005-60M.bgnet (decision loss 0.162)
+256-256 alpha 0.0025  64M: decisions best 75.09%  loss 0.161  pasko 0.270  atta 0.142 prim 0.155 anch 0.175 raci 0.176   | bg 49.79  nack 50.42  mean 50.11
+256-256 alpha 0.0025  68M: decisions best 74.98%  loss 0.163  pasko 0.280  atta 0.147 prim 0.154 anch 0.170 raci 0.185   -> phase done
+--- 256-256 best: 256-256-a0025-64M-avg (decision loss 0.161): bg 49.79  nack 50.42  mean 50.11; f16 copy: bg 49.87  nack 50.45  mean 50.16

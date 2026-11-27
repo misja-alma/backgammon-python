@@ -1,0 +1,248 @@
+{
+ "objective": "dmp",
+ "alphas": [
+  0.01,
+  0.005,
+  0.0025
+ ],
+ "phases": [
+  {
+   "alpha": 0.01,
+   "from": null,
+   "segments": [
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-4M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-4M-avg.bgnet",
+     "games": 4000000,
+     "best": 71.12,
+     "loss": 0.236,
+     "pasko": 0.394,
+     "groups": {
+      "attacking": 0.203,
+      "priming": 0.229,
+      "anchoring": 0.237,
+      "racing": 0.285
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-8M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-8M-avg.bgnet",
+     "games": 8000000,
+     "best": 72.45,
+     "loss": 0.21,
+     "pasko": 0.342,
+     "groups": {
+      "attacking": 0.179,
+      "priming": 0.202,
+      "anchoring": 0.218,
+      "racing": 0.251
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-12M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-12M-avg.bgnet",
+     "games": 12000000,
+     "best": 73.38,
+     "loss": 0.19,
+     "pasko": 0.319,
+     "groups": {
+      "attacking": 0.164,
+      "priming": 0.182,
+      "anchoring": 0.194,
+      "racing": 0.229
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-16M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-16M-avg.bgnet",
+     "games": 16000000,
+     "best": 73.78,
+     "loss": 0.18,
+     "pasko": 0.29,
+     "groups": {
+      "attacking": 0.16,
+      "priming": 0.174,
+      "anchoring": 0.186,
+      "racing": 0.208
+     },
+     "games_result": [
+      49.25,
+      49.89
+     ]
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-20M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-20M-avg.bgnet",
+     "games": 20000000,
+     "best": 74.11,
+     "loss": 0.176,
+     "pasko": 0.304,
+     "groups": {
+      "attacking": 0.161,
+      "priming": 0.16,
+      "anchoring": 0.183,
+      "racing": 0.2
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-24M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-24M-avg.bgnet",
+     "games": 24000000,
+     "best": 74.36,
+     "loss": 0.17,
+     "pasko": 0.279,
+     "groups": {
+      "attacking": 0.144,
+      "priming": 0.162,
+      "anchoring": 0.187,
+      "racing": 0.193
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-28M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-28M-avg.bgnet",
+     "games": 28000000,
+     "best": 74.5,
+     "loss": 0.167,
+     "pasko": 0.279,
+     "groups": {
+      "attacking": 0.145,
+      "priming": 0.163,
+      "anchoring": 0.172,
+      "racing": 0.196
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-32M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-32M-avg.bgnet",
+     "games": 32000000,
+     "best": 74.9,
+     "loss": 0.163,
+     "pasko": 0.274,
+     "groups": {
+      "attacking": 0.136,
+      "priming": 0.161,
+      "anchoring": 0.176,
+      "racing": 0.188
+     },
+     "games_result": [
+      49.76,
+      50.65
+     ]
+    }
+   ],
+   "stale": 2,
+   "done": true
+  },
+  {
+   "alpha": 0.005,
+   "from": {
+    "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-32M.bgnet",
+    "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-32M-avg.bgnet",
+    "games": 32000000,
+    "loss": 0.163
+   },
+   "segments": [
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-36M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-36M-avg.bgnet",
+     "games": 36000000,
+     "best": 75.51,
+     "loss": 0.155,
+     "pasko": 0.263,
+     "groups": {
+      "attacking": 0.13,
+      "priming": 0.15,
+      "anchoring": 0.169,
+      "racing": 0.18
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-40M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-40M-avg.bgnet",
+     "games": 40000000,
+     "best": 75.69,
+     "loss": 0.156,
+     "pasko": 0.256,
+     "groups": {
+      "attacking": 0.129,
+      "priming": 0.149,
+      "anchoring": 0.168,
+      "racing": 0.184
+     }
+    }
+   ],
+   "stale": 1,
+   "done": true
+  },
+  {
+   "alpha": 0.0025,
+   "from": {
+    "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-36M.bgnet",
+    "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a005-36M-avg.bgnet",
+    "games": 36000000,
+    "loss": 0.155
+   },
+   "segments": [
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-40M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-40M-avg.bgnet",
+     "games": 40000000,
+     "best": 75.54,
+     "loss": 0.153,
+     "pasko": 0.262,
+     "groups": {
+      "attacking": 0.129,
+      "priming": 0.147,
+      "anchoring": 0.164,
+      "racing": 0.177
+     }
+    },
+    {
+     "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-44M.bgnet",
+     "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-44M-avg.bgnet",
+     "games": 44000000,
+     "best": 75.8,
+     "loss": 0.153,
+     "pasko": 0.26,
+     "groups": {
+      "attacking": 0.126,
+      "priming": 0.147,
+      "anchoring": 0.163,
+      "racing": 0.182
+     }
+    }
+   ],
+   "stale": 2,
+   "done": true
+  }
+ ],
+ "start": {
+  "net": null,
+  "games": 0
+ },
+ "games_played": [
+  16000000,
+  32000000
+ ],
+ "done": true,
+ "plateaued": false,
+ "best": {
+  "raw": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-40M.bgnet",
+  "avg": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-40M-avg.bgnet",
+  "games": 40000000,
+  "loss": 0.153
+ },
+ "final": {
+  "net": "/Users/misja/PycharmProjects/backgammon-python/nets/arch/384-384-a0025-40M-avg.bgnet",
+  "loss": 0.153,
+  "f32": [
+   49.95,
+   50.99
+  ],
+  "f16": [
+   49.9,
+   50.98
+  ]
+ }
+}
