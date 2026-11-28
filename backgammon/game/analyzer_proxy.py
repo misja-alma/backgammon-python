@@ -87,17 +87,19 @@ class AnalyzerProxy:
     def analyze_moves(cls, position: Position, die1: int, die2: int, depth: int, money: bool = False) -> list:
         """Every move with the dice, best first, by the Rust engine searching depth roll levels:
         (position after the move, equity for the mover, [win, win gammon, win backgammon,
-        lose gammon, lose backgammon] for the mover, NaN where the net doesn't know them)."""
+        lose gammon, lose backgammon] for the mover, NaN where the net doesn't know them, roll
+        levels searched). Moves outside the search space (see set_rust_move_filter) come last,
+        with their 1-ply values (0 roll levels)."""
         backgammon_rust.set_money_scoring(money)
         result = []
-        for me_checkers, opp_checkers, turn, equity, probs in backgammon_rust.analyze_moves(
+        for me_checkers, opp_checkers, turn, equity, probs, levels in backgammon_rust.analyze_moves(
                 *cls._rust_position_args(position), die1, die2, depth):
             after = Position()
             after.me_checkers = list(me_checkers)
             after.opponent_checkers = list(opp_checkers)
             after.set_turn(Player.ME if turn == 1 else Player.OPPONENT)
             after.set_cube(position.cube_value, position.cube_owner)
-            result.append((after, equity, list(probs)))
+            result.append((after, equity, list(probs), levels))
         return result
 
     @classmethod
@@ -107,6 +109,17 @@ class AnalyzerProxy:
         backgammon_rust.set_money_scoring(money)
         equity, probs = backgammon_rust.analyze_position(*cls._rust_position_args(position), depth)
         return equity, list(probs)
+
+    @classmethod
+    def rollout(cls, position: Position, first: int, games: int, seed: int, depth: int,
+                money: bool = False) -> list[int]:
+        """Games first..first + games of a cubeless rollout of the position by the Rust engine
+        (both sides playing its move at depth roll levels, for money or double match point): the
+        points the side on roll won in each game (±1, ±2, ±3). The first two rolls rotate through
+        the 1296 combinations; later ones are random from seed (the same seed and game number give
+        the same game)."""
+        backgammon_rust.set_money_scoring(money)
+        return backgammon_rust.rollout(*cls._rust_position_args(position), first, games, seed, depth)
 
     @staticmethod
     def play_rust_game(me_depth: int, opponent_depth: int, seed: int,
@@ -131,6 +144,21 @@ class AnalyzerProxy:
         """Replace the Rust engine's cache with an empty one of this size. The cache is per
         thread, so call this on the thread that runs the engine (the AnalysisWorker)."""
         backgammon_rust.set_cache_size(megabytes)
+
+    @staticmethod
+    def set_rust_threads(threads: int) -> int:
+        """Let the Rust engine search on this many threads (searches of at least one roll level;
+        the results are the same as with one). Per thread like the cache: call this on the thread
+        that runs the engine. Returns the number of threads in use."""
+        return backgammon_rust.set_threads(threads)
+
+    @staticmethod
+    def set_rust_move_filter(margin: Optional[float], max_moves: Optional[int]) -> None:
+        """The Rust engine's search space: at every move decision of a search of at least one roll
+        level, only the moves within margin equity of the best by their 1-ply equity are searched
+        deeper, at most max_moves of them (None: no limit; both None: every move). Per thread like
+        the cache: call it on the engine's thread. Clears the cache when it changes."""
+        backgammon_rust.set_move_filter(margin, max_moves)
 
     @staticmethod
     def rust_cache_size_mb() -> int:

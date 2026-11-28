@@ -57,10 +57,28 @@ class AnalysisWorker:
         snapshot = copy.deepcopy(position)
         return self.submit(lambda: analyze(snapshot, dice, depth, money))
 
+    def rollout(self, position: Position, dice, games: int, depth: int, money: bool, progress,
+                candidates=None, preferred=None) -> Future:
+        """Roll out the position or the moves with dice in the background, see
+        move_analysis.rollout (which updates progress). The future resolves to an Analysis."""
+        from backgammon.game.move_analysis import rollout
+        snapshot = copy.deepcopy(position)
+        return self.submit(lambda: rollout(snapshot, dice, games, depth, money, progress, candidates, preferred))
+
     def set_rust_cache_size(self, megabytes: int) -> Future:
         """Resize the Rust engine's cache on the worker thread (where the engine runs), after any
         queued task."""
         return self.submit(lambda: AnalyzerProxy.set_rust_cache_size(megabytes))
+
+    def set_rust_threads(self, threads: int) -> Future:
+        """Set the Rust engine's search threads on the worker thread (where the engine runs).
+        The future resolves to the number of threads in use."""
+        return self.submit(lambda: AnalyzerProxy.set_rust_threads(threads))
+
+    def set_rust_move_filter(self, margin, max_moves) -> Future:
+        """Set the Rust engine's search space on the worker thread (see
+        AnalyzerProxy.set_rust_move_filter)."""
+        return self.submit(lambda: AnalyzerProxy.set_rust_move_filter(margin, max_moves))
 
     def set_rust_network(self, path) -> Future:
         """Switch the Rust engine's evaluator on the worker thread (see

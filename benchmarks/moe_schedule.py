@@ -14,12 +14,18 @@ classify with their own reference net (the DMP 512-256 they were found in).
    only the expert learns, only from its own positions). The standard schedule per expert: the
    experts start from the base net, which already plateaued at alpha 0.01, so alphas 0.005 then
    0.0025; --segment games per segment; a phase ends after 1 segment (2 in the last phase) without
-   lowering the expert's best loss by 0.09 millipoints, or after 4 segments; the next phase starts
+   lowering the expert's best loss by 0.09 millipoints (no limit on the number of segments since
+   2026-11-27; it was 4, which stopped experts that were still improving); the next phase starts
    from the best segment. Progress is measured against bgsage on the measuring set: a separate
    collection (DIR/measure, seed 4242, never trained on: the training collection excludes it) of
    1000 decisions per game type judged by bgsage at 3-ply for money
    (benchmarks/moe_measure.py --money -> data/decisions/moe-types-money.txt; money scoring,
-   millipoints); the expert's loss on the decisions of its type against the base net's.
+   millipoints); the expert's loss on the decisions of its type against the base net's. A
+   decision counts for a type when most of its candidates (the positions after the moves, with the
+   opponent on roll) are of that type: those are what an expert of the type evaluates (types come
+   in mirror pairs: the candidates of a holding-ahead decision are mostly holding-behind positions).
+   Until 2026-11-27 decisions were grouped by the position before the move, which measured each
+   expert on its mirror type.
 3. Gateway (moe_gate), with the experts frozen (their best segments): a single hidden layer of 512,
    trained on self-play positions to rate how well each expert judges them. Only the gateway learns.
 4. The evaluator (DIR/experts/moe.bgmoe): experts rated below 0.25 skipped, the remaining ratings
@@ -46,7 +52,6 @@ ROOT = Path(__file__).resolve().parents[1]
 STALE = 1        # stale segments that end a phase
 STALE_LAST = 2   # ... the last phase
 MARGIN = 0.09    # millipoints (money scoring): the later-phase margin of train_schedule
-MAX_SEGMENTS = 4
 VARIANTS = ["backgammon", "nackgammon"]
 BINARIES = ["moe_collect", "moe_expert", "moe_gate", "decision_benchmark"]
 MEASURE = "moe-types-money"   # the measuring set (data/decisions), money
@@ -75,12 +80,18 @@ class Run:
 
     def decisions(self, model, dataset="money"):
         """Overall (best %, loss) and per group {name: (n, loss)}, money scoring (millipoints):
-        bgsage's game plans for the money set, the game types for the measuring set."""
-        out = subprocess.run([str(self.bin / "decision_benchmark"), "--set", dataset, "--scoring", "money", str(model)],
+        bgsage's game plans for the money set; for the measuring set the game types of the
+        candidates (`--candidate-types`: a decision counts for a type when most of the positions
+        after its moves are of that type, the positions an expert of the type evaluates)."""
+        extra = ["--candidate-types", self.a.types] if dataset == MEASURE else []
+        out = subprocess.run([str(self.bin / "decision_benchmark"), "--set", dataset, "--scoring", "money"] + extra + [str(model)],
                              cwd=ROOT, check=True, capture_output=True, text=True).stdout
         best, loss = re.search(r"^all\s+\d+\s+([\d.]+)%\s+([\d.]+)", out, re.M).groups()
-        groups = {g: (int(n), float(v)) for g, n, v in re.findall(r"^(\S+)\s+(\d+)\s+[\d.]+%\s+([\d.]+)", out, re.M)
-                  if g not in ("all", "group")}
+        if dataset == MEASURE:
+            groups = {g: (int(n), float(v)) for g, n, v in re.findall(r"^type (\S+)\s+(\d+)\s+[\d.]+%\s+([\d.]+)", out, re.M)}
+        else:
+            groups = {g: (int(n), float(v)) for g, n, v in re.findall(r"^(\S+)\s+(\d+)\s+[\d.]+%\s+([\d.]+)", out, re.M)
+                      if g not in ("all", "group")}
         return float(best), float(loss), groups
 
     def games(self, model, note):
@@ -208,7 +219,7 @@ class Run:
                 p["segments"].append({"raw": str(raw), "avg": str(avg), "games": games, "loss": loss, "overall": overall})
                 phase_best = min([p["from"]["loss"]] + [s["loss"] for s in p["segments"][:-1]])
                 p["stale"] = 0 if loss <= phase_best - MARGIN else p["stale"] + 1
-                p["done"] = p["stale"] >= stale_limit or len(p["segments"]) >= MAX_SEGMENTS
+                p["done"] = p["stale"] >= stale_limit
                 if loss < e["best"]["loss"]:
                     e["best"] = {"raw": str(raw), "avg": str(avg), "games": games, "loss": loss}
                 self.save()

@@ -15,22 +15,24 @@ use crate::fast_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Copy)]
-struct Slot<K> {
+struct Slot<K, V> {
     key: K,
-    value: f64,
+    value: V,
     depth: u8,
 }
 
-type Bucket<K> = [Option<Slot<K>>; 2];
+type Bucket<K, V> = [Option<Slot<K, V>>; 2];
 
-pub struct TranspositionTable<K> {
-    buckets: Vec<Bucket<K>>,
+/// Keys `K`, values `V` (an equity by default; the analyzer stores an equity with the outcome
+/// probabilities).
+pub struct TranspositionTable<K, V = f64> {
+    buckets: Vec<Bucket<K, V>>,
 }
 
-impl<K: Copy + Eq + Hash> TranspositionTable<K> {
+impl<K: Copy + Eq + Hash, V: Copy> TranspositionTable<K, V> {
     /// A table that uses at most `bytes` of memory (as many buckets as fit, at least one).
     pub fn with_size_bytes(bytes: usize) -> Self {
-        let count = (bytes / std::mem::size_of::<Bucket<K>>()).max(1);
+        let count = (bytes / std::mem::size_of::<Bucket<K, V>>()).max(1);
         TranspositionTable { buckets: vec![[None, None]; count] }
     }
 
@@ -45,7 +47,7 @@ impl<K: Copy + Eq + Hash> TranspositionTable<K> {
     }
 
     #[inline]
-    pub fn get(&self, key: &K) -> Option<f64> {
+    pub fn get(&self, key: &K) -> Option<V> {
         self.buckets[self.index(key)]
             .iter()
             .flatten()
@@ -55,7 +57,7 @@ impl<K: Copy + Eq + Hash> TranspositionTable<K> {
 
     /// Store a result; `depth` is how deep it was searched (deeper entries are kept preferably).
     #[inline]
-    pub fn store(&mut self, key: K, depth: u8, value: f64) {
+    pub fn store(&mut self, key: K, depth: u8, value: V) {
         let index = self.index(&key);
         let bucket = &mut self.buckets[index];
         let new = Some(Slot { key, value, depth });
@@ -89,7 +91,90 @@ impl<K: Copy + Eq + Hash> TranspositionTable<K> {
 
     /// Memory used by the table, in bytes.
     pub fn size_bytes(&self) -> usize {
-        self.buckets.len() * std::mem::size_of::<Bucket<K>>()
+        self.buckets.len() * std::mem::size_of::<Bucket<K, V>>()
+    }
+}
+
+/// A `TranspositionTable` that several threads use at once (the analyzer's parallel search): split
+/// into shards, each behind its own lock, chosen by bits of the key's hash that the shards' own
+/// bucket index doesn't depend on, so threads rarely wait for each other. Also counts lookups
+/// and hits.
+pub struct SharedTable<K, V = f64> {
+    shards: Vec<std::sync::Mutex<TranspositionTable<K, V>>>,
+    lookups: std::sync::atomic::AtomicU64,
+    hits: std::sync::atomic::AtomicU64,
+}
+
+const SHARDS: usize = 64;
+
+impl<K: Copy + Eq + Hash, V: Copy> SharedTable<K, V> {
+    /// A table that uses at most `bytes` of memory in all.
+    pub fn with_size_bytes(bytes: usize) -> Self {
+        SharedTable {
+            shards: (0..SHARDS).map(|_| std::sync::Mutex::new(TranspositionTable::with_size_bytes(bytes / SHARDS))).collect(),
+            lookups: Default::default(),
+            hits: Default::default(),
+        }
+    }
+
+    /// The shard of a key: the low bits of a second hash (the shards index buckets by the high bits).
+    #[inline]
+    fn shard(&self, key: &K) -> &std::sync::Mutex<TranspositionTable<K, V>> {
+        let mut hasher = FxHasher::default();
+        key.hash(&mut hasher);
+        let h = hasher.finish();
+        &self.shards[((h ^ (h >> 29)) as usize) % SHARDS]
+    }
+
+    #[inline]
+    pub fn get(&self, key: &K) -> Option<V> {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.lookups.fetch_add(1, Relaxed);
+        let value = self.shard(key).lock().unwrap().get(key);
+        if value.is_some() {
+            self.hits.fetch_add(1, Relaxed);
+        }
+        value
+    }
+
+    #[inline]
+    pub fn store(&self, key: K, depth: u8, value: V) {
+        self.shard(&key).lock().unwrap().store(key, depth, value);
+    }
+
+    pub fn clear(&self) {
+        for shard in &self.shards {
+            shard.lock().unwrap().clear();
+        }
+        self.reset_stats();
+    }
+
+    /// (lookups, hits) since the last `clear` or `reset_stats`.
+    pub fn stats(&self) -> (u64, u64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        (self.lookups.load(Relaxed), self.hits.load(Relaxed))
+    }
+
+    pub fn reset_stats(&self) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.lookups.store(0, Relaxed);
+        self.hits.store(0, Relaxed);
+    }
+
+    pub fn len(&self) -> usize {
+        self.shards.iter().map(|s| s.lock().unwrap().len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.shards.iter().map(|s| s.lock().unwrap().capacity()).sum()
+    }
+
+    pub fn size_bytes(&self) -> usize {
+        self.shards.iter().map(|s| s.lock().unwrap().size_bytes()).sum()
     }
 }
 
@@ -147,6 +232,30 @@ mod tests {
         let tt = TranspositionTable::<([u8; 26], [u8; 26], u32)>::with_size_bytes(budget);
         assert!(tt.size_bytes() <= budget);
         assert!(tt.size_bytes() > budget - 1024, "only rounding to whole buckets may be lost");
+    }
+
+    #[test]
+    fn test_shared_table_from_several_threads() {
+        let tt = SharedTable::<u64>::with_size_bytes(1 << 22);
+        std::thread::scope(|scope| {
+            for t in 0..4u64 {
+                let tt = &tt;
+                scope.spawn(move || {
+                    for key in (t * 1000)..(t * 1000 + 1000) {
+                        tt.store(key, 1, key as f64);
+                    }
+                });
+            }
+        });
+        for key in 0..4000u64 {
+            if let Some(v) = tt.get(&key) {
+                assert_eq!(v, key as f64);
+            }
+        }
+        assert!(tt.len() > 3500);
+        tt.clear();
+        assert!(tt.is_empty());
+        assert_eq!(tt.stats(), (0, 0));
     }
 
     #[test]

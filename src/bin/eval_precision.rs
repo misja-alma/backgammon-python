@@ -138,7 +138,7 @@ pub fn search_speed(net: &NeuralNet, positions: &[(SimplePosition, (i32, i32))])
     println!("\nsearch (best_move, fresh 256 MB cache per move), {} positions:", positions.len());
     let f32_analyzer = RustAnalyzer::with_evaluator(Box::new(NeuralNetEvaluator { net: net.clone() }), 256);
     let half = EvalNet::from_net(net, &vec![Kind::F16; net.sizes().len() - 2], &[]).unwrap();
-    let f16_analyzer = RustAnalyzer::with_evaluator(Box::new(EvalNetEvaluator { net: half }), 256);
+    let f16_analyzer = RustAnalyzer::with_evaluator(Box::new(EvalNetEvaluator::new(half)), 256);
     for depth in [1u32, 2] {
         let n = if depth == 1 { positions.len() } else { positions.len().min(300) };
         let mut times = [0.0f64; 2];

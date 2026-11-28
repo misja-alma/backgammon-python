@@ -5,12 +5,16 @@
 //!
 //! The net is trained while profiling (as in real training: offline TD(λ), see td_training.rs), on
 //! a copy; nothing is saved. One thread, with the bearoff database when data/bearoff-6x15.bd
-//! exists. A third argument `f16` chooses the moves with the net's f16 copy (`train --search f16`).
+//! exists. A third argument `f16` chooses the moves with the net's f16 copy (`train --search f16`),
+//! `full` evaluates every candidate in full instead of incrementally (as training does).
 //!
 //! History (256-512-256-5 money net, this machine, µs per move):
 //! - 2026-11-27, online traces: forward 3.9, move choice 53.6 (18.4 evaluations), evaluation of the
 //!   chosen position 2.8, backward + 5 dense traces + weights 223: 283 µs, 63 games/s.
-//! - 2026-11-27, offline TD(λ) (one sparse backward pass per position at the end of the game).
+//! - 2026-11-27, offline TD(λ) (one sparse backward pass per position at the end of the game):
+//!   forward 2.9, move choice 52.0, offline TD(λ) 7.0: 62 µs, 290 games/s.
+//! - 2026-11-27, incremental first layer in the move choice (~10 inputs differ from the position
+//!   before the move, against ~43 non-zero): move choice 33.6: 43 µs, 413 games/s.
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::Path;
@@ -33,6 +37,11 @@ fn main() {
     let n = net.param_count();
     let (alpha, lambda) = (0.0025f32, 0.7f32);
     let search_f16 = std::env::args().nth(3).as_deref() == Some("f16");
+    // As in training: the candidates evaluated incrementally from the position before the move;
+    // `full` evaluates each in full instead.
+    let incremental = !search_f16 && std::env::args().nth(3).as_deref() != Some("full");
+    let mut base = backgammon_rust::neural_net::Layer1Base::default();
+    let (diff_inputs, diff_count) = (Cell::new(0u64), Cell::new(0u64));
     let mut grad = vec![0.0f32; n];
     let mut game_acts: Vec<backgammon_rust::neural_net::Activations> = Vec::new();
     let (mut errors, mut sides, mut learns) = (Vec::new(), Vec::new(), Vec::new());
@@ -71,6 +80,12 @@ fn main() {
             sides.push(side);
             learns.push(Some(t));
             let t1 = Instant::now();
+            // Incremental evaluation: the base is the position before the move, seen by the
+            // opponent (who is on roll in every candidate).
+            let mut flipped = position.clone();
+            flipped.switch_turn();
+            let mut base_input = [0.0f32; MAX_INPUTS];
+            net.encode(&flipped, &mut base_input);
 
             // Counting pass (not timed): evaluations, distinct candidates, exact ones.
             let calls = Cell::new(0u64);
@@ -81,7 +96,13 @@ fn main() {
                 seen.borrow_mut().insert(c.cache_key(0));
                 match exact_outcome(bearoff, c) {
                     Some(o) => { exacts.set(exacts.get() + 1); -money_equity(&o) }
-                    None => -money_equity(&match &copy { Some(c16) => c16.outcome(c), None => net.outcome(c) }),
+                    None => {
+                        let mut x = [0.0f32; MAX_INPUTS];
+                        net.encode(c, &mut x);
+                        diff_inputs.set(diff_inputs.get() + x.iter().zip(&base_input).filter(|(a, b)| a != b).count() as u64);
+                        diff_count.set(diff_count.get() + 1);
+                        -money_equity(&match &copy { Some(c16) => c16.outcome(c), None => net.outcome(c) })
+                    }
                 }
             });
             evaluations += calls.get();
@@ -90,10 +111,14 @@ fn main() {
             let t2 = Instant::now();
             std::hint::black_box(generator.best_position(&position, d1, d2, |c| c.count(Player::Me, 0) as f64));
             let t3 = Instant::now();
+            if incremental {
+                net.layer1_base(&base_input, &mut base);
+            }
             let next = generator
                 .best_position(&position, d1, d2, |c| {
                     -money_equity(&exact_outcome(bearoff, c).unwrap_or_else(|| match &copy {
                         Some(c16) => c16.outcome(c),
+                        None if incremental => net.outcome_incremental(&base, c),
                         None => net.outcome(c),
                     }))
                 })
@@ -139,7 +164,7 @@ fn main() {
     println!("net {} ({} params), {} games, {} moves ({:.1} per game), bearoff db {}\n",
              net.description(), n, games, moves, moves as f64 / games as f64, bearoff.is_some());
     println!("per move (training work only, {:.0} games/s on one thread{}):", games as f64 / t_total.as_secs_f64(),
-             if search_f16 { ", moves chosen by the f16 copy" } else { "" });
+             if search_f16 { ", moves chosen by the f16 copy" } else if incremental { ", incremental first layer" } else { ", full evaluations" });
     row("forward pass keeping activations", t_fwd);
     row("move choice (generation + evaluations)", t_choose);
     row("   of which move generation alone", t_movegen);
@@ -148,4 +173,6 @@ fn main() {
     println!("\nevaluations per move: {:.1} ({:.1} exact), distinct positions among them: {:.1} ({:.0}% repeats)",
              evaluations as f64 / moves as f64, exact_evals as f64 / moves as f64, distinct as f64 / moves as f64,
              100.0 * (evaluations - distinct) as f64 / evaluations.max(1) as f64);
+    println!("inputs differing from the position before the move (seen by the opponent): {:.1} per candidate",
+             diff_inputs.get() as f64 / diff_count.get().max(1) as f64);
 }

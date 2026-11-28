@@ -1,0 +1,1 @@
+expert holding-ahead (money): 1000000 start positions, net /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/holding-ahead.bgnet (34000000 games so far), off its type /Users/misja/PycharmProjects/backgammon-python/nets/moe/value.bgnet; alpha 0.0025, lambda 0.7, 12 threads

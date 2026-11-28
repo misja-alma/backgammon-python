@@ -138,6 +138,91 @@ impl Encoding {
     }
 }
 
+/// The checker counts as an encoding sees them: per block (0: the player on roll, 1: the other),
+/// points 0 (borne off) to 25 (bar) in that player's numbering.
+pub fn block_counts<P: Position>(position: &P) -> [[u8; 26]; 2] {
+    let on_roll = position.get_turn();
+    let mut counts = [[0u8; 26]; 2];
+    for (block, player) in [on_roll, on_roll.other_player()].into_iter().enumerate() {
+        for point in 0..26 {
+            counts[block][point] = position.count(player, point);
+        }
+    }
+    counts
+}
+
+/// The 5 `TdCounts` inputs of a point with n checkers, by the same expressions as `encode`.
+const UNITS: [[f32; UNITS_PER_POINT]; 16] = {
+    let mut table = [[0.0f32; UNITS_PER_POINT]; 16];
+    let mut n = 0;
+    while n < 16 {
+        table[n] = [(n >= 1) as u8 as f32, (n >= 2) as u8 as f32, (n >= 3) as u8 as f32,
+                    (if n > 3 { n - 3 } else { 0 }) as f32 * 0.5, n as f32 * CHECKER_SCALE];
+        n += 1;
+    }
+    table
+};
+
+impl Encoding {
+    /// The inputs of `position` that differ from a base's (`base_input`: the encoding of a
+    /// position with `base_counts`, see `block_counts`), as (index, input - base input) in
+    /// ascending order of index into `idx` and `diff`; returns how many. Exactly the non-zero
+    /// entries of `encode(position) - base_input`, found from the points whose counts differ
+    /// instead of encoding every input: the positions after the moves from one position differ
+    /// from it in a few points. `TdCounts`, `TdFlags` and `TdNack` only (None for the others).
+    pub fn encode_diff<P: Position>(self, position: &P, base_counts: &[[u8; 26]; 2], base_input: &[f32],
+                                    idx: &mut [u16], diff: &mut [f32]) -> Option<usize> {
+        if self == Encoding::CountsPips {
+            return None;
+        }
+        let on_roll = position.get_turn();
+        let per_player = self.inputs_per_player();
+        let mut count = 0;
+        let mut push = |i: usize, value: f32, count: &mut usize| {
+            let d = value - base_input[i];
+            idx[*count] = i as u16;
+            diff[*count] = d;
+            *count += (d != 0.0) as usize;
+        };
+        for (block, player) in [on_roll, on_roll.other_player()].into_iter().enumerate() {
+            let offset = block * per_player;
+            let mut pips = 0u32;
+            let mut changed = false;
+            for point in 1..26 {
+                let n = position.count(player, point);
+                pips += point as u32 * n as u32;
+                if n != base_counts[block][point] {
+                    changed = true;
+                    let at = offset + (point - 1) * UNITS_PER_POINT;
+                    for (u, &value) in UNITS[n as usize].iter().enumerate() {
+                        push(at + u, value, &mut count);
+                    }
+                }
+            }
+            let off = position.count(player, 0);
+            if off != base_counts[block][0] {
+                push(offset + 25 * UNITS_PER_POINT, off as f32 * CHECKER_SCALE, &mut count);
+            }
+            if changed {
+                push(offset + per_player - 1, pips as f32 * PIP_SCALE, &mut count);
+            }
+        }
+        let n_flags = self.n_flags();
+        if n_flags == 0 {
+            return Some(count);
+        }
+        let flags = 2 * per_player;
+        let race = is_race(position);
+        let nack = |player| (!race && checkers_in_opponent_home(position, player) >= 4) as u8 as f32;
+        if self == Encoding::TdFlags {
+            push(flags, race as u8 as f32, &mut count);
+        }
+        push(flags + n_flags - 2, nack(on_roll), &mut count);
+        push(flags + n_flags - 1, nack(on_roll.other_player()), &mut count);
+        Some(count)
+    }
+}
+
 /// The player's rearmost occupied point in their own numbering (25 = bar), 0 if all are off.
 fn rearmost<P: Position>(position: &P, player: Player) -> usize {
     (1..26).rev().find(|&p| position.count(player, p) > 0).unwrap_or(0)
@@ -173,6 +258,40 @@ mod tests {
 
     fn close(a: f32, b: f32) -> bool {
         (a - b).abs() < 1e-6
+    }
+
+    #[test]
+    fn test_encode_diff_matches_encoding_differences() {
+        use crate::move_generator::MoveGenerator;
+        for encoding in [Encoding::TdCounts, Encoding::TdFlags, Encoding::TdNack] {
+            let mut generator = MoveGenerator::<SimplePosition>::new();
+            let mut parent = SimplePosition::new();
+            parent.setup_starting_position();
+            parent.set_turn(Player::Me);
+            // A few positions along a game, each with its candidates.
+            for step in 0..12 {
+                let (d1, d2) = ((step % 6 + 1) as i32, ((step * 5 + 2) % 6 + 1) as i32);
+                let mut base = parent.clone();
+                base.switch_turn();
+                let mut base_input = [0.0; MAX_INPUTS];
+                encoding.encode(&base, &mut base_input);
+                let base_counts = block_counts(&base);
+                let children = generator.legal_positions(&parent, d1, d2);
+                for child in &children {
+                    let mut x = [0.0; MAX_INPUTS];
+                    encoding.encode(child, &mut x);
+                    let expected: Vec<(u16, f32)> = (0..encoding.n_inputs())
+                        .filter(|&i| x[i] - base_input[i] != 0.0).map(|i| (i as u16, x[i] - base_input[i])).collect();
+                    let (mut idx, mut diff) = ([0u16; MAX_INPUTS], [0.0f32; MAX_INPUTS]);
+                    let n = encoding.encode_diff(child, &base_counts, &base_input, &mut idx, &mut diff).unwrap();
+                    let got: Vec<(u16, f32)> = (0..n).map(|k| (idx[k], diff[k])).collect();
+                    assert_eq!(got, expected);
+                }
+                if let Some(next) = children.first() {
+                    parent = next.clone();
+                }
+            }
+        }
     }
 
     #[test]

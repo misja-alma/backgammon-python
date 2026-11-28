@@ -1,0 +1,6 @@
+expert escaped-opponent (money): 1000000 start positions, net /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/escaped-opponent.bgnet (36000000 games so far), off its type /Users/misja/PycharmProjects/backgammon-python/nets/moe/value.bgnet; alpha 0.005, lambda 0.7, 12 threads
+   500000 games ( 36500000 total)  4644 games/s  20.0 turns/game, 23% of the moves on its own type  saved
+  1000000 games ( 37000000 total)  4622 games/s  20.0 turns/game, 23% of the moves on its own type  saved
+  1500000 games ( 37500000 total)  4616 games/s  20.0 turns/game, 23% of the moves on its own type  saved
+  2000000 games ( 38000000 total)  4607 games/s  20.0 turns/game, 23% of the moves on its own type  saved
+average of the last 250000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/escaped-opponent-avg.bgnet

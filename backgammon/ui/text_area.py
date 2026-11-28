@@ -20,6 +20,16 @@ class TextArea:
         self._lines.append(text)
         self._scroll_offset = 0  # snap to bottom
 
+    def show_or_replace(self, index, text: str) -> int:
+        """Replace line index with text, so that a changing status (e.g. a rollout's progress)
+        takes one line, or add text as a new line when index is None or no longer exists (the area
+        was cleared). Returns the line's index, for the next update."""
+        if index is None or index >= len(self._lines):
+            self.show_text(text)
+            return len(self._lines) - 1
+        self._lines[index] = text
+        return index
+
     def clear(self):
         self._lines.clear()
         self._scroll_offset = 0

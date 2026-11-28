@@ -346,6 +346,36 @@ class FormatMoveTest(unittest.TestCase):
         self.assertEqual("bar/22 3/off", format_move(((25, 22), (3, 0))))
         self.assertEqual("no legal move", format_move(()))
 
+    @staticmethod
+    def position(me: dict, opponent: dict, turn=Player.ME) -> Position:
+        p = Position()
+        for point, n in me.items():
+            p.set_checkers(Player.ME, point, n)
+        for point, n in opponent.items():
+            p.set_checkers(Player.OPPONENT, point, n)
+        p.set_turn(turn)
+        return p
+
+    def test_hits_are_marked(self):
+        # OPPONENT's blot on its 21 point is on ME's 4 point; two of its checkers on its 20 (ME's 5).
+        before = self.position({18: 1, 8: 2, 6: 2}, {21: 1, 20: 2})
+        self.assertEqual("18/13 8/4*", format_move(((18, 13), (8, 4)), before))
+        self.assertEqual("6/1 8/5", format_move(((6, 1), (8, 5)), before))     # 2 checkers: no hit
+        # Listed from the highest point down, the marks stay with their half-moves.
+        self.assertEqual("18/13 8/4*", format_move(((8, 4), (18, 13)), before, highest_first=True))
+
+    def test_hit_on_the_way_and_from_the_bar(self):
+        # A blot on ME's 8 point (OPPONENT's 17): 13/8* then on with the same checker; then from the bar.
+        before = self.position({13: 1, 25: 1}, {17: 1, 3: 1})
+        self.assertEqual("13/8* 8/3", format_move(((13, 8), (8, 3)), before))
+        self.assertEqual("bar/22* 13/8*", format_move(((25, 22), (13, 8)), before))   # OPPONENT's 3 is ME's 22
+
+    def test_the_opponent_hits_too(self):
+        before = self.position({4: 1}, {13: 2}, turn=Player.OPPONENT)          # ME's 4 is OPPONENT's 21
+        self.assertEqual("13/8 13/9 9/4 8/4", format_move(((13, 8), (13, 9), (9, 4), (8, 4)), before))
+        self.assertEqual("13/8 8/4", format_move(((13, 8), (8, 4)), before))
+        self.assertEqual("13/9 9/4*", format_move(((13, 9), (9, 4)), self.position({21: 1}, {13: 2}, Player.OPPONENT)))
+
 
 if __name__ == '__main__':
     unittest.main()

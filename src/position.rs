@@ -23,10 +23,12 @@ pub fn invalid_point_error<T>() -> Result<T, String> {
     Err("Point must be between 0 and 25".to_string())
 }
 
-pub trait Position {
+/// Positions are plain data, so they can be shared between and sent to threads (the analyzer's
+/// parallel search).
+pub trait Position: Send + Sync + 'static {
     /// A compact identity of (position, search depth), used as the analyzer's cache key.
     /// Unlike a hash it is collision-free: two keys are equal only for identical positions.
-    type CacheKey: Copy + Eq + Hash;
+    type CacheKey: Copy + Eq + Hash + Send + Sync;
 
     fn cache_key(&self, depth: u16) -> Self::CacheKey;
     fn get_checkers(&self, player: Player, point: usize) -> Result<u8, String>;

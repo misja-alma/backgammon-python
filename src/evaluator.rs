@@ -26,6 +26,22 @@ pub trait Evaluator<P: Position> {
         }
     }
 
+    /// `evaluate_scored` of `child`, a position after a legal move from `parent` (so with the
+    /// other side on roll). Evaluators may compute these incrementally from `parent`, which is
+    /// faster when the children of one parent are evaluated in a row, as the search does at its
+    /// last level (see `EvalNetEvaluator`); by default the child is just evaluated.
+    fn evaluate_child_scored(&self, parent: &P, child: &P, scoring: Scoring) -> f64 {
+        let _ = parent;
+        self.evaluate_scored(child, scoring)
+    }
+
+    /// An independent copy for another thread (the analyzer's parallel search, see
+    /// `RustAnalyzer::set_threads`), or None when the evaluator can't be copied (searches then
+    /// stay on one thread).
+    fn fork(&self) -> Option<Box<dyn Evaluator<P> + Send>> {
+        None
+    }
+
     /// The 5 outcome probabilities for the side to move (win, win gammon, win backgammon, lose
     /// gammon, lose backgammon), NaN for those the evaluator doesn't know. By default only the
     /// winning chance, from the double match point equity; money nets know them all.
@@ -35,6 +51,12 @@ pub trait Evaluator<P: Position> {
         }
         let win = (self.evaluate_scored(position, Scoring::Dmp) + 1.0) / 2.0;
         [win, f64::NAN, f64::NAN, f64::NAN, f64::NAN]
+    }
+
+    /// `evaluate_scored` and `outcome` together: evaluators that get both from one evaluation
+    /// override it (the search's leaves need both, see `RustAnalyzer`).
+    fn evaluate_full(&self, position: &P, scoring: Scoring) -> (f64, [f64; MONEY_OUTPUTS]) {
+        (self.evaluate_scored(position, scoring), self.outcome(position))
     }
 
     /// Short description, e.g. for logging which evaluator is in use.
@@ -145,7 +167,11 @@ impl TerminalEvaluator {
     pub const UNKNOWN: f64 = 0.0;
 }
 
-impl<P: Position> Evaluator<P> for TerminalEvaluator {
+impl<P: Position + 'static> Evaluator<P> for TerminalEvaluator {
+    fn fork(&self) -> Option<Box<dyn Evaluator<P> + Send>> {
+        Some(Box::new(TerminalEvaluator))
+    }
+
     fn evaluate(&self, position: &P) -> f64 {
         terminal_equity(position).unwrap_or(Self::UNKNOWN)
     }
@@ -159,7 +185,11 @@ impl<P: Position> Evaluator<P> for TerminalEvaluator {
 /// training nets, since any useful net should beat it easily.
 pub struct PipCountEvaluator;
 
-impl<P: Position> Evaluator<P> for PipCountEvaluator {
+impl<P: Position + 'static> Evaluator<P> for PipCountEvaluator {
+    fn fork(&self) -> Option<Box<dyn Evaluator<P> + Send>> {
+        Some(Box::new(PipCountEvaluator))
+    }
+
     fn evaluate(&self, position: &P) -> f64 {
         terminal_equity(position).unwrap_or_else(|| {
             let turn = position.get_turn();

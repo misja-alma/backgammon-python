@@ -41,6 +41,8 @@ def main():
                     continue
                 if is_left_click and board.handle_panel_click(event.pos):
                     continue
+                if is_left_click and board.handle_scoring_click(event.pos):
+                    continue
 
                 if board.is_game_running:
                     # During a game clicks enter moves; editing the position is disabled.
@@ -49,6 +51,8 @@ def main():
 
                 position = board.position
                 player = Player.ME if is_left_click else Player.OPPONENT
+                if board.handle_dice_edit_click(event.pos, is_left_click=bool(is_left_click)):
+                    continue
                 if not board.map.handle_cube_click(event.pos, is_left_click=bool(is_left_click), position=position):
                     if not board.handle_turn_indicator_click(event.pos):
                         board.handle_click_entering(event.pos, player, is_left_click=bool(is_left_click))

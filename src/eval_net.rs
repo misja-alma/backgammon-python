@@ -59,6 +59,7 @@ impl Kind {
 /// Scale of the net's inputs for an `I8` first layer: every input is a multiple of 1/30.
 pub const INPUT_SCALE: f32 = 1.0 / 30.0;
 
+#[derive(Clone)]
 enum Layer {
     /// Weights `[input][output]`, as in `NeuralNet`.
     F32 { w: Vec<f32>, b: Vec<f32> },
@@ -69,6 +70,7 @@ enum Layer {
     I8 { w: Vec<i8>, scale: Vec<f32>, b: Vec<f32>, in_scale: f32 },
 }
 
+#[derive(Clone)]
 pub struct EvalNet {
     encoding: Encoding,
     sizes: Vec<usize>,
@@ -77,10 +79,25 @@ pub struct EvalNet {
     /// Output layer, one row of `sizes[-2]` weights per output.
     out_w: Vec<f32>,
     out_b: Vec<f32>,
+    /// The output layer again, one row of 8 per input (the outputs, padded with zeros), and the
+    /// biases padded to 8: for the f16 paths, which add each active input's row with two vector
+    /// multiply-adds.
+    out_rows: Vec<f32>,
+    out_b8: [f32; 8],
     /// Every hidden layer is `F16` (the fast path `forward_f16`).
     all_f16: bool,
     pub games_trained: u64,
     pub objective: Objective,
+}
+
+/// The base of incremental evaluation, see `EvalNet::layer1_base`.
+#[derive(Clone, Default)]
+pub struct HalfBase {
+    input: Vec<f32>,
+    sums: Vec<u16>,
+    /// The base position's checker counts (`encoding::block_counts`), when made from a position
+    /// (`layer1_base_position`): then the inputs that differ can be found from the counts.
+    counts: Option<[[u8; 26]; 2]>,
 }
 
 struct Scratch {
@@ -91,6 +108,9 @@ struct Scratch {
     /// Active inputs as (index, f16 bits), for the all-f16 path: input and output of a layer.
     half_in: HalfActive,
     half_out: HalfActive,
+    /// Differing inputs for `forward_position_incremental` (index, f32 difference).
+    diff_idx: Vec<u16>,
+    diff_val: Vec<f32>,
 }
 
 /// Non-zero activations of a layer for the all-f16 path: indices and f16 bits, in separate arrays
@@ -114,6 +134,8 @@ thread_local! {
         groups: vec![(0, 0); MAX_WIDTH / 4],
         half_in: HalfActive::new(),
         half_out: HalfActive::new(),
+        diff_idx: vec![0; MAX_INPUTS + 8],
+        diff_val: vec![0.0; MAX_INPUTS + 8],
     });
 }
 
@@ -235,6 +257,15 @@ impl EvalNet {
         let start = net.layer_offset(n_hidden);
         let (n_in, k_out) = (sizes[n_hidden], sizes[n_hidden + 1]);
         let out_w = (0..k_out).flat_map(|j| (0..n_in).map(move |i| params[start + i * k_out + j])).collect();
+        if k_out > 8 {
+            return Err(format!("{} outputs: at most 8", k_out));
+        }
+        let mut out_rows = vec![0.0f32; n_in * 8];
+        for i in 0..n_in {
+            out_rows[i * 8..i * 8 + k_out].copy_from_slice(&params[start + i * k_out..start + (i + 1) * k_out]);
+        }
+        let mut out_b8 = [0.0f32; 8];
+        out_b8[..k_out].copy_from_slice(&params[start + n_in * k_out..start + n_in * k_out + k_out]);
         Ok(EvalNet {
             encoding: net.encoding(),
             sizes,
@@ -242,6 +273,8 @@ impl EvalNet {
             hidden,
             out_w,
             out_b: params[start + n_in * k_out..start + n_in * k_out + k_out].to_vec(),
+            out_rows,
+            out_b8,
             all_f16: cfg!(target_arch = "aarch64") && kinds.iter().all(|&k| k == Kind::F16),
             games_trained: net.games_trained,
             objective: net.objective,
@@ -383,16 +416,227 @@ impl EvalNet {
                 };
                 std::mem::swap(half_in, half_out);
             }
-            let n_in = self.sizes[self.sizes.len() - 2];
-            for (j, y) in out.iter_mut().enumerate() {
-                let w = &self.out_w[j * n_in..(j + 1) * n_in];
-                let mut sum = self.out_b[j];
-                for k in 0..count {
-                    sum += w[half_in.idx[k] as usize] * f16_to_f32(half_in.val[k]);
-                }
-                *y = sigmoid(sum);
+            self.output_f16(half_in, count, out);
+        })
+    }
+
+    /// Whether `forward_all_incremental` is really incremental (all hidden layers f16, aarch64);
+    /// otherwise it is a plain `forward_all`.
+    pub fn incremental(&self) -> bool {
+        self.all_f16
+    }
+
+    /// The base of incremental evaluation (see `NeuralNet::layer1_base`): its inputs and its f16
+    /// sums of the first layer (biases included, before the ReLU). Only for `incremental()` nets.
+    pub fn layer1_base(&self, input: &[f32], base: &mut HalfBase) {
+        let (n0, n1) = (self.sizes[0], self.sizes[1]);
+        base.input.clear();
+        base.input.extend_from_slice(&input[..n0]);
+        base.sums.resize(n1, 0);
+        base.counts = None;
+        #[cfg(target_arch = "aarch64")]
+        if self.all_f16 {
+            unsafe { self.layer1_sums_f16(input, &mut base.sums) };
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "fp16")]
+    unsafe fn layer1_sums_f16(&self, input: &[f32], sums: &mut [u16]) {
+        let Layer::F16 { w, b, .. } = &self.hidden[0] else { unreachable!() };
+        let n1 = self.sizes[1];
+        SCRATCH.with(|scratch| {
+            let Scratch { half_in, .. } = &mut *scratch.borrow_mut();
+            let count = collect_f16(&input[..self.sizes[0]], half_in);
+            if n1 % 128 == 0 {
+                f16_sums::<16>(w, b, n1, half_in, count, sums)
+            } else {
+                f16_sums::<1>(w, b, n1, half_in, count, sums)
             }
         })
+    }
+
+    /// `layer1_base` for a position, keeping its checker counts too, so that
+    /// `forward_position_incremental` can find the differing inputs from the counts.
+    pub fn layer1_base_position<P: Position>(&self, position: &P, base: &mut HalfBase) {
+        let mut input = [0.0; MAX_INPUTS];
+        self.encoding.encode(position, &mut input);
+        self.layer1_base(&input, base);
+        base.counts = Some(crate::encoding::block_counts(position));
+    }
+
+    /// The outputs for `position` (into `out[..outputs]`), incrementally from a base made by
+    /// `layer1_base_position`: the differing inputs come from the points whose checker counts
+    /// differ (`Encoding::encode_diff`) instead of encoding the position and comparing every
+    /// input. The same results as `forward_all_incremental` of its encoding.
+    pub fn forward_position_incremental<P: Position>(&self, base: &HalfBase, position: &P, out: &mut [f32]) {
+        let k = self.objective.outputs();
+        #[cfg(target_arch = "aarch64")]
+        if self.all_f16 {
+            if let Some(counts) = &base.counts {
+                let done = SCRATCH.with(|scratch| {
+                    let Scratch { half_in, half_out, diff_idx, diff_val, .. } = &mut *scratch.borrow_mut();
+                    let count = self.encoding.encode_diff(position, counts, &base.input, diff_idx, diff_val)?;
+                    unsafe { self.forward_f16_diffs(base, diff_idx, diff_val, count, half_in, half_out, &mut out[..k]) };
+                    Some(())
+                });
+                if done.is_some() {
+                    return;
+                }
+            }
+        }
+        let mut input = [0.0; MAX_INPUTS];
+        self.encoding.encode(position, &mut input);
+        self.forward_all_incremental(base, &input, &mut out[..k]);
+    }
+
+    /// The f16 path from the differing inputs (index, f32 difference; arrays with 8 entries of
+    /// slack beyond `count`).
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "fp16")]
+    unsafe fn forward_f16_diffs(&self, base: &HalfBase, idx: &[u16], diff: &[f32], count: usize,
+                                half_in: &mut HalfActive, half_out: &mut HalfActive, out: &mut [f32]) {
+        let mut k = 0;
+        while k < count {
+            let p = diff.as_ptr().add(k);
+            let h = vcombine_f16(vcvt_f16_f32(vld1q_f32(p)), vcvt_f16_f32(vld1q_f32(p.add(4))));
+            vst1q_u16(half_in.val.as_mut_ptr().add(k), vreinterpretq_u16_f16(h));
+            vst1q_u16(half_in.idx.as_mut_ptr().add(k), vld1q_u16(idx.as_ptr().add(k)));
+            k += 8;
+        }
+        self.f16_layers_from_diffs(base, half_in, half_out, count, out);
+    }
+
+    /// `forward_all` for inputs that differ in few places from a base's (see
+    /// `NeuralNet::forward_all_incremental`): the first layer starts from the base's f16 sums and
+    /// adds only the rows of the inputs that differ. Equal to `forward_all` up to f16 rounding.
+    pub fn forward_all_incremental(&self, base: &HalfBase, input: &[f32], out: &mut [f32]) {
+        let k = self.objective.outputs();
+        #[cfg(target_arch = "aarch64")]
+        if self.all_f16 {
+            return unsafe { self.forward_f16_incremental(base, input, &mut out[..k]) };
+        }
+        let _ = base;
+        self.forward_into(input, &mut out[..k]);
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "fp16")]
+    unsafe fn forward_f16_incremental(&self, base: &HalfBase, input: &[f32], out: &mut [f32]) {
+        SCRATCH.with(|scratch| {
+            let Scratch { half_in, half_out, .. } = &mut *scratch.borrow_mut();
+            // The inputs that differ from the base's, and by how much.
+            let count = collect_diff_f16(&input[..self.sizes[0]], &base.input, half_in);
+            self.f16_layers_from_diffs(base, half_in, half_out, count, out);
+        })
+    }
+
+    /// The f16 layers from the differing inputs in `half_in` (the first layer starting from the
+    /// base's sums), then the output layer.
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "fp16")]
+    unsafe fn f16_layers_from_diffs(&self, base: &HalfBase, half_in: &mut HalfActive, half_out: &mut HalfActive,
+                                    mut count: usize, out: &mut [f32]) {
+        for (l, layer) in self.hidden.iter().enumerate() {
+            let Layer::F16 { w, b, .. } = layer else { unreachable!() };
+            let b: &[u16] = if l == 0 { &base.sums } else { b };
+            let n_out = self.sizes[l + 1];
+            count = if n_out % 128 == 0 {
+                f16_layer_sparse::<16>(w, b, n_out, half_in, count, half_out)
+            } else if n_out % 64 == 0 {
+                f16_layer_sparse::<8>(w, b, n_out, half_in, count, half_out)
+            } else {
+                f16_layer_sparse::<1>(w, b, n_out, half_in, count, half_out)
+            };
+            std::mem::swap(half_in, half_out);
+        }
+        self.output_f16(half_in, count, out);
+    }
+
+    /// The output layer of the f16 paths for the active units of the last hidden layer: per
+    /// active unit its row of (up to) 8 outputs in two vector multiply-adds, then the sigmoids.
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "fp16")]
+    unsafe fn output_f16(&self, active: &HalfActive, count: usize, out: &mut [f32]) {
+        let mut a0 = vld1q_f32(self.out_b8.as_ptr());
+        let mut a1 = vld1q_f32(self.out_b8.as_ptr().add(4));
+        let mut values = [0.0f32; 8];
+        let mut k = 0;
+        while k < count {
+            // 8 values at a time (HalfActive has 8 entries of slack; those beyond count are unused).
+            let h = load_f16(active.val.as_ptr().add(k));
+            vst1q_f32(values.as_mut_ptr(), vcvt_f32_f16(vget_low_f16(h)));
+            vst1q_f32(values.as_mut_ptr().add(4), vcvt_high_f32_f16(h));
+            for (j, &x) in values.iter().enumerate().take(count - k) {
+                let row = self.out_rows.as_ptr().add(*active.idx.get_unchecked(k + j) as usize * 8);
+                a0 = vfmaq_n_f32(a0, vld1q_f32(row), x);
+                a1 = vfmaq_n_f32(a1, vld1q_f32(row.add(4)), x);
+            }
+            k += 8;
+        }
+        let mut sums = [0.0f32; 8];
+        vst1q_f32(sums.as_mut_ptr(), a0);
+        vst1q_f32(sums.as_mut_ptr().add(4), a1);
+        for (y, &x) in out.iter_mut().zip(&sums) {
+            *y = sigmoid(x);
+        }
+    }
+
+    /// For `incremental_profile`: the time per input (ns, best of `repeats`) of each stage of
+    /// `forward_all_incremental` on these inputs, all children of the position whose base is
+    /// `base`: (collecting the differing inputs, first layer, second layer, second layer on the
+    /// first input over and over (its weight rows stay in the L1 cache), second layer with the
+    /// next rows prefetched, output layer). All-f16 nets with two hidden layers only.
+    #[doc(hidden)]
+    #[cfg(target_arch = "aarch64")]
+    pub fn profile_incremental(&self, base: &HalfBase, inputs: &[[f32; MAX_INPUTS]], repeats: usize) -> [f64; 6] {
+        assert!(self.all_f16 && self.hidden.len() == 2);
+        let (Layer::F16 { w: w1, .. }, Layer::F16 { w: w2, b: b2, .. }) = (&self.hidden[0], &self.hidden[1]) else { unreachable!() };
+        let (n0, n1, n2) = (self.sizes[0], self.sizes[1], self.sizes[2]);
+        let n = inputs.len();
+        // Each stage's inputs, computed once.
+        let mut diffs: Vec<HalfActive> = Vec::new();
+        let mut hidden1: Vec<HalfActive> = Vec::new();
+        let mut hidden2: Vec<HalfActive> = Vec::new();
+        let (mut c0, mut c1, mut c2) = (vec![0; n], vec![0; n], vec![0; n]);
+        unsafe {
+            for (k, input) in inputs.iter().enumerate() {
+                let (mut d, mut h1, mut h2) = (HalfActive::new(), HalfActive::new(), HalfActive::new());
+                c0[k] = collect_diff_f16(&input[..n0], &base.input, &mut d);
+                c1[k] = layer16(w1, &base.sums, n1, &d, c0[k], &mut h1);
+                c2[k] = layer16(w2, b2, n2, &h1, c1[k], &mut h2);
+                diffs.push(d);
+                hidden1.push(h1);
+                hidden2.push(h2);
+            }
+        }
+        let time = |f: &mut dyn FnMut(usize) -> usize| -> f64 {
+            let mut best = f64::MAX;
+            for _ in 0..repeats {
+                let t = std::time::Instant::now();
+                let mut sink = 0;
+                for k in 0..n {
+                    sink += f(k);
+                }
+                std::hint::black_box(sink);
+                best = best.min(t.elapsed().as_nanos() as f64 / n as f64);
+            }
+            best
+        };
+        let mut scratch = HalfActive::new();
+        let t_diff = time(&mut |k| unsafe { collect_diff_f16(&inputs[k][..n0], &base.input, &mut scratch) });
+        let t_l1 = time(&mut |k| unsafe { layer16(w1, &base.sums, n1, &diffs[k], c0[k], &mut scratch) });
+        let t_l2 = time(&mut |k| unsafe { layer16(w2, b2, n2, &hidden1[k], c1[k], &mut scratch) });
+        let t_l2_same = time(&mut |_| unsafe { layer16(w2, b2, n2, &hidden1[0], c1[0], &mut scratch) });
+        let t_l2_prefetch = time(&mut |k| unsafe { f16_layer_prefetch(w2, b2, n2, &hidden1[k], c1[k], &mut scratch) });
+        let k_out = self.objective.outputs();
+        let t_out = time(&mut |k| {
+            let mut out = [0.0f32; MONEY_OUTPUTS];
+            unsafe { self.output_f16(&hidden2[k], c2[k], &mut out[..k_out]) };
+            std::hint::black_box(out);
+            0
+        });
+        [t_diff, t_l1, t_l2, t_l2_same, t_l2_prefetch, t_out]
     }
 
     /// Writes the evaluation copy of `net` with these kinds and input scales (see `from_net`):
@@ -604,11 +848,17 @@ unsafe fn f16_layer<const C: usize>(w: &[u16], b: &[u16], active: &[(u32, f32)],
     }
 }
 
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-unsafe fn f16_to_f32(h: u16) -> f32 {
-    vgetq_lane_f32::<0>(vcvt_f32_f16(vreinterpret_f16_u16(vdup_n_u16(h))))
-}
+/// The number of set bits of each 8-bit mask (a table load is cheaper than `count_ones` on aarch64,
+/// which goes through the vector unit).
+const POPCOUNT: [u8; 256] = {
+    let mut table = [0u8; 256];
+    let mut m = 0;
+    while m < 256 {
+        table[m] = (m as u32).count_ones() as u8;
+        m += 1;
+    }
+    table
+};
 
 /// For an 8-bit lane mask: the `tbl` byte indices that move the selected u16 lanes to the front.
 const COMPACT: [[u8; 16]; 256] = {
@@ -630,6 +880,84 @@ const COMPACT: [[u8; 16]; 256] = {
     table
 };
 
+/// The sums of an f16 layer (biases included, no ReLU) for the active inputs into `sums`, C
+/// registers of 8 outputs at a time.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "fp16")]
+unsafe fn f16_sums<const C: usize>(w: &[u16], b: &[u16], n_out: usize, active: &HalfActive, count: usize, sums: &mut [u16]) {
+    let zero = vreinterpretq_f16_u16(vdupq_n_u16(0));
+    let mut start = 0;
+    while start < n_out {
+        let mut acc = [zero; C];
+        for c in 0..C {
+            acc[c] = load_f16(b.as_ptr().add(start + 8 * c));
+        }
+        for k in 0..count {
+            let xv = vreinterpretq_f16_u16(vdupq_n_u16(*active.val.get_unchecked(k)));
+            let row = w.as_ptr().add(*active.idx.get_unchecked(k) as usize * n_out + start);
+            for c in 0..C {
+                acc[c] = vfmaq_f16(acc[c], load_f16(row.add(8 * c)), xv);
+            }
+        }
+        for c in 0..C {
+            vst1q_u16(sums.as_mut_ptr().add(start + 8 * c), vreinterpretq_u16_f16(acc[c]));
+        }
+        start += 8 * C;
+    }
+}
+
+/// `f16_layer_sparse` for the profile, with its usual register count for the width.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "fp16")]
+unsafe fn layer16(w: &[u16], b: &[u16], n_out: usize, active: &HalfActive, count: usize, out: &mut HalfActive) -> usize {
+    if n_out % 128 == 0 {
+        f16_layer_sparse::<16>(w, b, n_out, active, count, out)
+    } else if n_out % 64 == 0 {
+        f16_layer_sparse::<8>(w, b, n_out, active, count, out)
+    } else {
+        f16_layer_sparse::<1>(w, b, n_out, active, count, out)
+    }
+}
+
+/// `f16_layer_sparse` (16 registers, widths that are a multiple of 128) with the weights of the
+/// active unit `PREFETCH_AHEAD` places ahead prefetched into the L1 cache.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "fp16")]
+unsafe fn f16_layer_prefetch(w: &[u16], b: &[u16], n_out: usize, active: &HalfActive, count: usize,
+                             out: &mut HalfActive) -> usize {
+    const C: usize = 16;
+    const AHEAD: usize = 4;
+    let zero = vreinterpretq_f16_u16(vdupq_n_u16(0));
+    let mut n = 0;
+    let mut start = 0;
+    while start < n_out {
+        let mut acc = [zero; C];
+        for c in 0..C {
+            acc[c] = load_f16(b.as_ptr().add(start + 8 * c));
+        }
+        for k in 0..count {
+            if k + AHEAD < count {
+                let ahead = w.as_ptr().add(*active.idx.get_unchecked(k + AHEAD) as usize * n_out + start) as *const i8;
+                // 256 bytes: 4 cache lines of 64 (M-series lines are 128 bytes: 2).
+                for line in 0..2 {
+                    core::arch::asm!("prfm pldl1keep, [{0}]", in(reg) ahead.add(128 * line), options(nostack, readonly, preserves_flags));
+                }
+            }
+            let xv = vreinterpretq_f16_u16(vdupq_n_u16(*active.val.get_unchecked(k)));
+            let row = w.as_ptr().add(*active.idx.get_unchecked(k) as usize * n_out + start);
+            for c in 0..C {
+                acc[c] = vfmaq_f16(acc[c], load_f16(row.add(8 * c)), xv);
+            }
+        }
+        for c in 0..C {
+            let r = vmaxq_f16(acc[c], zero);
+            n = push_nonzero(start + 8 * c, r, vcgtq_f16(r, zero), out, n);
+        }
+        start += 8 * C;
+    }
+    n
+}
+
 /// Appends the lanes of `h` where `mask` is set, as indices base + lane and f16 bits, at
 /// position `count` of `out`, without branches: shuffle them to the front with a table lookup,
 /// store all 8 lanes, and advance by the number selected. Returns the new count.
@@ -644,7 +972,34 @@ unsafe fn push_nonzero(base: usize, h: float16x8_t, mask: uint16x8_t, out: &mut 
     let indices = vqtbl1q_u8(vreinterpretq_u8_u16(vaddq_u16(vdupq_n_u16(base as u16), vld1q_u16(LANES.as_ptr()))), shuffle);
     vst1q_u16(out.val.as_mut_ptr().add(count), vreinterpretq_u16_u8(values));
     vst1q_u16(out.idx.as_mut_ptr().add(count), vreinterpretq_u16_u8(indices));
-    count + m.count_ones() as usize
+    count + *POPCOUNT.get_unchecked(m) as usize
+}
+
+/// The differences `values - base` that aren't zero, as indices and f16 bits in `out`, 8 at a
+/// time (as `collect_f16`). Returns how many.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "fp16")]
+unsafe fn collect_diff_f16(values: &[f32], base: &[f32], out: &mut HalfActive) -> usize {
+    let mut count = 0;
+    let n = values.len();
+    let mut start = 0;
+    while start + 8 <= n {
+        let (p, q) = (values.as_ptr().add(start), base.as_ptr().add(start));
+        let lo = vsubq_f32(vld1q_f32(p), vld1q_f32(q));
+        let hi = vsubq_f32(vld1q_f32(p.add(4)), vld1q_f32(q.add(4)));
+        let h = vcombine_f16(vcvt_f16_f32(lo), vcvt_f16_f32(hi));
+        count = push_nonzero(start, h, vmvnq_u16(vceqzq_f16(h)), out, count);
+        start += 8;
+    }
+    for i in start..n {
+        let d = values[i] - base[i];
+        if d != 0.0 {
+            out.idx[count] = i as u16;
+            out.val[count] = f16_bits(d);
+            count += 1;
+        }
+    }
+    count
 }
 
 /// The non-zero values of `values` as indices and f16 bits in `out`, 8 at a time. Returns how many.
@@ -769,9 +1124,76 @@ unsafe fn i8_layer<const C: usize>(w: &[i8], scale: &[f32], b: &[f32], groups: &
 /// Plugs an `EvalNet` into the analyzer.
 pub struct EvalNetEvaluator {
     pub net: EvalNet,
+    /// For `evaluate_child_scored`: the parent the base was made for (its checkers and turn) and
+    /// the base (the parent seen by the other side).
+    children: RefCell<(Option<[u8; 53]>, HalfBase)>,
 }
 
-impl<P: Position> Evaluator<P> for EvalNetEvaluator {
+impl EvalNetEvaluator {
+    pub fn new(net: EvalNet) -> Self {
+        EvalNetEvaluator { net, children: RefCell::new((None, HalfBase::default())) }
+    }
+
+    /// The base for the children of `parent` (cached until the parent changes).
+    fn prepare_base<P: Position + Clone>(&self, parent: &P) -> std::cell::RefMut<'_, (Option<[u8; 53]>, HalfBase)> {
+        let mut children = self.children.borrow_mut();
+        let id = identity(parent);
+        if children.0 != Some(id) {
+            let mut flipped = parent.clone();
+            flipped.switch_turn();
+            self.net.layer1_base_position(&flipped, &mut children.1);
+            children.0 = Some(id);
+        }
+        children
+    }
+
+    /// The equity under `scoring` of the net's outputs.
+    fn scored(&self, out: &[f32; MONEY_OUTPUTS], scoring: Scoring) -> f64 {
+        match (scoring, self.net.objective) {
+            (Scoring::Money, Objective::Money) => money_equity(out),
+            _ => 2.0 * out[0] as f64 - 1.0,
+        }
+    }
+
+    fn terminal(&self, position: &impl Position, scoring: Scoring) -> Option<f64> {
+        match scoring {
+            Scoring::Money => terminal_money_equity(position),
+            Scoring::Dmp => terminal_equity(position),
+        }
+    }
+}
+
+/// A position's checkers and turn, as an identity.
+fn identity<P: Position>(position: &P) -> [u8; 53] {
+    let mut id = [0u8; 53];
+    for point in 0..26 {
+        id[point] = position.count(crate::position::Player::Me, point);
+        id[26 + point] = position.count(crate::position::Player::Opponent, point);
+    }
+    id[52] = position.get_turn() as u8;
+    id
+}
+
+impl<P: Position + Clone + 'static> Evaluator<P> for EvalNetEvaluator {
+    fn fork(&self) -> Option<Box<dyn Evaluator<P> + Send>> {
+        Some(Box::new(EvalNetEvaluator::new(self.net.clone())))
+    }
+
+    /// Incremental from the parent (`EvalNet::forward_all_incremental`) for all-f16 nets, with
+    /// the base cached until the parent changes.
+    fn evaluate_child_scored(&self, parent: &P, child: &P, scoring: Scoring) -> f64 {
+        if !self.net.incremental() {
+            return self.evaluate_scored(child, scoring);
+        }
+        if let Some(e) = self.terminal(child, scoring) {
+            return e;
+        }
+        let children = self.prepare_base(parent);
+        let mut out = [0.0; MONEY_OUTPUTS];
+        self.net.forward_position_incremental(&children.1, child, &mut out);
+        self.scored(&out, scoring)
+    }
+
     fn evaluate(&self, position: &P) -> f64 {
         self.net.equity(position)
     }
@@ -794,6 +1216,27 @@ impl<P: Position> Evaluator<P> for EvalNetEvaluator {
         match self.net.objective {
             Objective::Money => self.net.outcome(position).map(|x| x as f64),
             Objective::Dmp => [self.net.win_probability(position) as f64, f64::NAN, f64::NAN, f64::NAN, f64::NAN],
+        }
+    }
+
+    /// One forward pass for both: the equity follows from the outputs as in `evaluate_scored`.
+    fn evaluate_full(&self, position: &P, scoring: Scoring) -> (f64, [f64; MONEY_OUTPUTS]) {
+        if crate::evaluator::is_game_over(position) {
+            return (self.evaluate_scored(position, scoring), self.outcome(position));
+        }
+        match self.net.objective {
+            Objective::Money => {
+                let out = self.net.outcome(position);
+                let equity = match scoring {
+                    Scoring::Dmp => 2.0 * out[0] as f64 - 1.0,
+                    Scoring::Money => money_equity(&out),
+                };
+                (equity, out.map(|x| x as f64))
+            }
+            Objective::Dmp => {
+                let win = self.net.win_probability(position);
+                (2.0 * win as f64 - 1.0, [win as f64, f64::NAN, f64::NAN, f64::NAN, f64::NAN])
+            }
         }
     }
 
@@ -820,6 +1263,70 @@ mod tests {
         let mut y = [0.0; MAX_INPUTS];
         net.encode(&q, &mut y);
         vec![x, y]
+    }
+
+    #[test]
+    fn test_evaluate_full_is_evaluate_scored_and_outcome_in_one() {
+        use crate::move_generator::MoveGenerator;
+        for objective in [Objective::Money, Objective::Dmp] {
+            let net = NeuralNet::new_random_for(Encoding::TdNack, &[64, 32], objective, 3);
+            for kinds in [[Kind::F32, Kind::F32], [Kind::F16, Kind::F16]] {
+                let evaluator = EvalNetEvaluator::new(EvalNet::from_net(&net, &kinds, &[INPUT_SCALE, 0.05]).unwrap());
+                let mut parent = SimplePosition::new();
+                parent.setup_starting_position();
+                parent.set_turn(Player::Me);
+                for child in MoveGenerator::<SimplePosition>::new().legal_positions(&parent, 6, 4) {
+                    for scoring in [Scoring::Dmp, Scoring::Money] {
+                        let (equity, outcome) = evaluator.evaluate_full(&child, scoring);
+                        assert_eq!(equity, evaluator.evaluate_scored(&child, scoring), "{:?} {:?}", objective, scoring);
+                        assert_eq!(outcome.map(f64::to_bits), evaluator.outcome(&child).map(f64::to_bits));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_incremental_children_match_full_evaluation() {
+        use crate::move_generator::MoveGenerator;
+        use crate::rust_analyzer::RustAnalyzer;
+        if !cfg!(target_arch = "aarch64") {
+            return;
+        }
+        for objective in [Objective::Money, Objective::Dmp] {
+            let net = NeuralNet::new_random_for(Encoding::TdNack, &[64, 32], objective, 3);
+            let half = EvalNet::from_net(&net, &[Kind::F16, Kind::F16], &[INPUT_SCALE, 0.05]).unwrap();
+            assert!(half.incremental());
+            let scoring = if objective == Objective::Money { Scoring::Money } else { Scoring::Dmp };
+            let evaluator = EvalNetEvaluator::new(half);
+            let mut generator = MoveGenerator::<SimplePosition>::new();
+            let mut parent = SimplePosition::new();
+            parent.setup_starting_position();
+            parent.set_turn(Player::Me);
+            let mut flipped = parent.clone();
+            flipped.switch_turn();
+            let mut base = HalfBase::default();
+            evaluator.net.layer1_base_position(&flipped, &mut base);
+            for (d1, d2) in [(6, 4), (3, 1), (5, 5)] {
+                for child in generator.legal_positions(&parent, d1, d2) {
+                    // From the checker counts: exactly the same as from the encoded inputs.
+                    let (mut a, mut b) = ([0.0; MONEY_OUTPUTS], [0.0; MONEY_OUTPUTS]);
+                    evaluator.net.forward_position_incremental(&base, &child, &mut a);
+                    let mut x = [0.0; MAX_INPUTS];
+                    evaluator.net.encoding.encode(&child, &mut x);
+                    evaluator.net.forward_all_incremental(&base, &x, &mut b);
+                    assert_eq!(a, b);
+                    let full = evaluator.evaluate_scored(&child, scoring);
+                    let inc = evaluator.evaluate_child_scored(&parent, &child, scoring);
+                    assert!((full - inc).abs() < 0.01, "{:?}: {} vs {}", objective, full, inc);
+                }
+            }
+            // Through the analyzer: the same best move as without incremental evaluation.
+            let analyzer = RustAnalyzer::with_evaluator(Box::new(evaluator), 16);
+            let best = analyzer.best_move(&parent, 6, 4, 0).unwrap();
+            let by_full = generator.best_position(&parent, 6, 4, |c| -analyzer.evaluator().evaluate_scored(c, Scoring::Dmp));
+            assert!((best.1 - by_full.unwrap().1).abs() < 0.01);
+        }
     }
 
     #[test]

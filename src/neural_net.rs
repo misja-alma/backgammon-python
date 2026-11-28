@@ -150,6 +150,13 @@ fn output_layer(weights: &[f32], biases: &[f32], active: &[(u32, f32)], out: &mu
     }
 }
 
+/// The base of incremental evaluation, see `NeuralNet::layer1_base`.
+#[derive(Clone, Default)]
+pub struct Layer1Base {
+    input: Vec<f32>,
+    sums: Vec<f32>,
+}
+
 /// Per-layer inputs of one forward pass plus back-propagation buffers, for `td_update`.
 pub struct Activations {
     /// layers[l]: the input of layer l (the net's input, then the hidden layers' ReLU outputs).
@@ -382,6 +389,69 @@ impl NeuralNet {
         let (n_in, n_out) = (self.sizes[layer], self.sizes[layer + 1]);
         let start = self.offsets[layer];
         (&self.params[start..start + n_in * n_out], &self.params[start + n_in * n_out..start + n_in * n_out + n_out])
+    }
+
+    /// The base of incremental evaluation (`forward_all_incremental`): its inputs, and its sums of
+    /// the first layer (biases included, before the ReLU).
+    pub fn layer1_base(&self, input: &[f32], base: &mut Layer1Base) {
+        let (n0, n1) = (self.sizes[0], self.sizes[1]);
+        base.input.clear();
+        base.input.extend_from_slice(&input[..n0]);
+        base.sums.resize(n1, 0.0);
+        let (weights, biases) = self.layer_params(0);
+        SCRATCH.with(|scratch| {
+            let Scratch { active, .. } = &mut *scratch.borrow_mut();
+            let count = collect(&input[..n0], active);
+            sparse_layer(weights, biases, &active[..count], &mut base.sums);
+        });
+    }
+
+    /// `forward_all` for inputs that differ in few places from a base's (e.g. the positions after
+    /// each legal move against the position before the move, all seen from the same side): the
+    /// first layer starts from the base's sums and adds only the rows of the inputs that differ,
+    /// times the difference. Equal to `forward_all` up to rounding (the sums are added in another
+    /// order). Hidden layers of more than one: deeper nets only (at least one hidden layer).
+    pub fn forward_all_incremental(&self, base: &Layer1Base, input: &[f32], out: &mut [f32]) {
+        SCRATCH.with(|scratch| {
+            let Scratch { next, active, .. } = &mut *scratch.borrow_mut();
+            let layers = self.layer_count();
+            let n0 = self.sizes[0];
+            let mut count = 0;
+            for (i, (&x, &b)) in input[..n0].iter().zip(&base.input).enumerate() {
+                let d = x - b;
+                active[count] = (i as u32, d);
+                count += (d != 0.0) as usize;
+            }
+            let (weights, _) = self.layer_params(0);
+            let n1 = self.sizes[1];
+            if layers == 1 {
+                // No hidden layer: the base's sums are the output's.
+                let mut sums = [0.0f32; MONEY_OUTPUTS];
+                sparse_layer(weights, &base.sums, &active[..count], &mut sums[..n1]);
+                for (y, &x) in out.iter_mut().zip(&sums[..n1]) {
+                    *y = sigmoid(x);
+                }
+                return;
+            }
+            count = relu_layer(weights, &base.sums, &mut active[..], count, &mut next[..n1]);
+            for layer in 1..layers - 1 {
+                let (weights, biases) = self.layer_params(layer);
+                let n_out = self.sizes[layer + 1];
+                count = relu_layer(weights, biases, &mut active[..], count, &mut next[..n_out]);
+            }
+            let (weights, biases) = self.layer_params(layers - 1);
+            output_layer(weights, biases, &active[..count], out);
+        })
+    }
+
+    /// The 5 outcome probabilities (money) or the winning chance (DMP, in element 0) of a position
+    /// by `forward_all_incremental` from a base made with `layer1_base`.
+    pub fn outcome_incremental<P: Position>(&self, base: &Layer1Base, position: &P) -> [f32; MONEY_OUTPUTS] {
+        let mut input = [0.0; MAX_INPUTS];
+        self.encode(position, &mut input);
+        let mut out = [0.0; MONEY_OUTPUTS];
+        self.forward_all_incremental(base, &input, &mut out[..self.objective.outputs()]);
+        out
     }
 
     /// All outputs (sigmoids) into `out[..objective.outputs()]`.
@@ -842,7 +912,11 @@ pub struct NeuralNetEvaluator {
     pub net: NeuralNet,
 }
 
-impl<P: Position> Evaluator<P> for NeuralNetEvaluator {
+impl<P: Position + 'static> Evaluator<P> for NeuralNetEvaluator {
+    fn fork(&self) -> Option<Box<dyn Evaluator<P> + Send>> {
+        Some(Box::new(NeuralNetEvaluator { net: self.net.clone() }))
+    }
+
     fn evaluate(&self, position: &P) -> f64 {
         self.net.equity(position)
     }
@@ -1027,6 +1101,38 @@ mod tests {
         net.add_gradient(&mut acts, &[1.0], &mut grad);
         for (a, b) in expected.iter().zip(&grad) {
             assert!((a - b).abs() < 1e-6, "{} vs {}", a, b);
+        }
+    }
+
+    #[test]
+    fn test_incremental_evaluation_matches_forward_all() {
+        use crate::move_generator::MoveGenerator;
+        for (objective, hidden) in [(Objective::Money, vec![48, 24]), (Objective::Dmp, vec![40])] {
+            let net = NeuralNet::new_random_for(Encoding::TdNack, &hidden, objective, 7);
+            let k = objective.outputs();
+            let mut generator = MoveGenerator::<SimplePosition>::new();
+            let mut position = SimplePosition::new();
+            position.setup_starting_position();
+            position.set_turn(Player::Me);
+            let mut flipped = position.clone();
+            flipped.switch_turn();
+            let mut base_input = [0.0; MAX_INPUTS];
+            net.encode(&flipped, &mut base_input);
+            let mut base = Layer1Base::default();
+            net.layer1_base(&base_input, &mut base);
+            let children = generator.legal_positions(&position, 6, 4);
+            assert!(children.len() > 5);
+            for child in &children {
+                let mut x = [0.0; MAX_INPUTS];
+                net.encode(child, &mut x);
+                let (mut full, mut inc) = ([0.0; MONEY_OUTPUTS], [0.0; MONEY_OUTPUTS]);
+                net.forward_all(&x, &mut full[..k]);
+                net.forward_all_incremental(&base, &x, &mut inc[..k]);
+                for j in 0..k {
+                    assert!((full[j] - inc[j]).abs() < 1e-5, "{:?}: {} vs {}", objective, full[j], inc[j]);
+                }
+                assert_eq!(net.outcome_incremental(&base, child)[..k], inc[..k]);
+            }
         }
     }
 

@@ -6,7 +6,8 @@ from backgammon.ui.dialog import Dialog
 
 
 class PlaySetupDialog(Dialog):
-    """Choose the two players (human or an engine, with search depth), the variant (backgammon or
+    """Choose the two players (human or an engine, with its strength in plies: n-ply is search
+    depth n - 1), the variant (backgammon or
     nackgammon), double match point (no gammons) or not, and whether a game between two engines
     is displayed. run() returns a GameConfig,
     or None when cancelled."""
@@ -49,9 +50,9 @@ class PlaySetupDialog(Dialog):
             for player_type in PlayerType:
                 self.draw_radio(self.radios[(player, player_type)], config.type == player_type, player_type.value)
             is_engine = config.type.is_engine
-            self.draw_text(x + 10, 205, "Depth:", enabled=is_engine)
+            self.draw_text(x + 10, 205, "Ply:", enabled=is_engine)
             minus, plus = self.steppers[player]
-            self.draw_stepper(minus, plus, config.depth, enabled=is_engine)
+            self.draw_stepper(minus, plus, f"{config.depth + 1}-ply", enabled=is_engine)
 
         self.draw_text(30, 246, "Game:")
         for variant, rect in self.variant_radios.items():

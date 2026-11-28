@@ -1,0 +1,6 @@
+expert back-game (money): 1000000 start positions, net /Users/misja/PycharmProjects/backgammon-python/nets/moe/base.bgnet (32000000 games so far), off its type /Users/misja/PycharmProjects/backgammon-python/nets/moe/value.bgnet; alpha 0.005, lambda 0.7, 12 threads
+   500000 games ( 32500000 total)  4346 games/s  23.7 turns/game, 25% of the moves on its own type  saved
+  1000000 games ( 33000000 total)  4330 games/s  23.7 turns/game, 25% of the moves on its own type  saved
+  1500000 games ( 33500000 total)  4324 games/s  23.7 turns/game, 25% of the moves on its own type  saved
+  2000000 games ( 34000000 total)  4317 games/s  23.7 turns/game, 25% of the moves on its own type  saved
+average of the last 250000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/back-game-avg.bgnet

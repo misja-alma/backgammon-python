@@ -1,0 +1,25 @@
+held-out positions: 20000; mean |value - 1-ply lookahead| (hundredths of cubeless money equity):
+    value net                2.212
+    routed system (types)    2.237
+    gateway, ratings >= 0.25 2.546
+    gateway top 1            2.426
+    gateway top 2            2.425
+    gateway all (weighted)   2.545
+    best expert (oracle)     0.881
+    generic expert only      3.194
+gateway with threshold 0.25: 6.74 experts per position on average
+gateway's first choice is the best expert in 33% of positions; first choices: holding-ahead 5%, holding-behind 5%, blitz-attacker 4%, blitz-defender 4%, prime-trapper 4%, prime-trapped 5%, contact-bearoff-ahead 5%, contact-bearoff-behind 5%, back-game 2%, escaped-opponent 7%, late-hit 4%, generic 50%
+per game type, on held-out positions of that type: value net / own expert / gateway (threshold 0.25)
+    holding-ahead              1165 positions  2.156 / 2.294 / 2.630
+    holding-behind             1148 positions  2.380 / 2.356 / 2.474
+    blitz-attacker             1453 positions  2.403 / 2.332 / 2.531
+    blitz-defender             1547 positions  2.272 / 2.402 / 2.557
+    prime-trapper              1373 positions  2.012 / 2.065 / 2.287
+    prime-trapped              1336 positions  1.915 / 1.987 / 2.056
+    contact-bearoff-ahead      1462 positions  2.300 / 2.338 / 2.493
+    contact-bearoff-behind     1523 positions  1.740 / 1.962 / 2.212
+    back-game                  1568 positions  2.007 / 2.167 / 2.112
+    escaped-opponent           1490 positions  2.023 / 2.029 / 2.276
+    late-hit                   1511 positions  2.612 / 2.719 / 2.899
+    generic                   11761 positions  2.085 / 2.132 / 2.460
+wrote /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/gate.bggate, /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/moe.bgmoe, /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/router.bgmoe

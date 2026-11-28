@@ -1,0 +1,6 @@
+expert holding-ahead (money): 1000000 start positions, net /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/holding-ahead.bgnet (34000000 games so far), off its type /Users/misja/PycharmProjects/backgammon-python/nets/moe/value.bgnet; alpha 0.005, lambda 0.7, 12 threads
+   500000 games ( 34500000 total)  3215 games/s  28.7 turns/game, 23% of the moves on its own type  saved
+  1000000 games ( 35000000 total)  3201 games/s  28.7 turns/game, 23% of the moves on its own type  saved
+  1500000 games ( 35500000 total)  3192 games/s  28.7 turns/game, 23% of the moves on its own type  saved
+  2000000 games ( 36000000 total)  3186 games/s  28.7 turns/game, 23% of the moves on its own type  saved
+average of the last 250000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/holding-ahead-avg.bgnet

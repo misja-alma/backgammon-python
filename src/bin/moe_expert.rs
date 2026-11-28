@@ -37,7 +37,7 @@ use backgammon_rust::game::Dice;
 use backgammon_rust::moe::GameTypes;
 use backgammon_rust::move_generator::MoveGenerator;
 use backgammon_rust::neural_net::{NeuralNet, Objective};
-use backgammon_rust::td_training::{exact_outcome, learn_offline_from_errors, DMP_SIGNS, DMP_SOURCE, ME_SIGNS, ME_SOURCE};
+use backgammon_rust::td_training::{exact_outcome, learn_offline_from_errors, move_base, DMP_SIGNS, DMP_SOURCE, ME_SIGNS, ME_SOURCE};
 use backgammon_rust::{EnginePosition, Player, Position};
 
 const MAX_TURNS: u32 = 10_000;
@@ -161,6 +161,7 @@ fn main() {
                 let n_params = net.params().len();
                 let mut base = net.params().to_vec();
                 let mut grad = vec![0.0f32; n_params];
+                let mut move_sums = backgammon_rust::neural_net::Layer1Base::default();
                 // The game so far: the activations of the expert's own positions, and per move
                 // the TD error (seen from Me), the side on roll, and which activations it has.
                 let mut acts: Vec<backgammon_rust::neural_net::Activations> = Vec::new();
@@ -212,13 +213,18 @@ fn main() {
                         };
                         let side = (position.get_turn() != Player::Me) as usize;
                         let value = if side == 0 { y } else { flip(money, &y) };
+                        // The expert evaluates the positions after the moves incrementally from the
+                        // position before the move (see td_training::move_base).
+                        move_base(&net, &position, &mut move_sums);
                         let judge = |p: &EnginePosition| -> Outcome {
                             if let Some(x) = exact(money, bearoff, p) {
                                 return x;
                             }
                             match classify(p) {
-                                (true, _) if money => net.outcome(p),
-                                (true, _) => [net.win_probability(p), 0.0, 0.0, 0.0, 0.0],
+                                (true, _) => {
+                                    let o = net.outcome_incremental(&move_sums, p);
+                                    if money { o } else { [o[0], 0.0, 0.0, 0.0, 0.0] }
+                                }
                                 (false, off) => off,
                             }
                         };

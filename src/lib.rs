@@ -141,7 +141,8 @@ fn best_move(
 /// Every move with the given dice, best first (the passed position when none is legal), searched
 /// `max_depth` roll levels: a list of (me_checkers, opp_checkers, turn, equity for the mover,
 /// [win, win gammon, win backgammon, lose gammon, lose backgammon] for the mover, NaN where the
-/// net doesn't know them).
+/// net doesn't know them, roll levels searched). The moves the search space (`set_move_filter`)
+/// leaves out come last, with their static values (0 roll levels).
 #[pyfunction]
 #[pyo3(signature = (me_checkers, opp_checkers, turn, cube_value, cube_owner, die1, die2, max_depth))]
 #[allow(clippy::too_many_arguments)]
@@ -155,15 +156,15 @@ fn analyze_moves(
     die1: i32,
     die2: i32,
     max_depth: u32,
-) -> PyResult<Vec<(Vec<u8>, Vec<u8>, u8, f64, Vec<f64>)>> {
+) -> PyResult<Vec<(Vec<u8>, Vec<u8>, u8, f64, Vec<f64>, u32)>> {
     let pos = build_position(me_checkers, opp_checkers, turn, cube_value, cube_owner)
         .map_err(pyo3::exceptions::PyValueError::new_err)?;
     let moves = py.allow_threads(move || ANALYZER.with(|a| a.borrow().analyze_moves(&pos, die1, die2, max_depth)));
-    Ok(moves.into_iter().map(|(p, equity, outcome)| {
+    Ok(moves.into_iter().map(|(p, equity, outcome, levels)| {
         let me_out: Vec<u8> = (0..26).map(|i| p.get_checkers(Player::Me, i).unwrap()).collect();
         let opp_out: Vec<u8> = (0..26).map(|i| p.get_checkers(Player::Opponent, i).unwrap()).collect();
         let turn_out = if p.get_turn() == Player::Me { 1u8 } else { 0u8 };
-        (me_out, opp_out, turn_out, equity, outcome.to_vec())
+        (me_out, opp_out, turn_out, equity, outcome.to_vec(), levels)
     }).collect())
 }
 
@@ -183,11 +184,59 @@ fn analyze_position(
 ) -> PyResult<(f64, Vec<f64>)> {
     let pos = build_position(me_checkers, opp_checkers, turn, cube_value, cube_owner)
         .map_err(pyo3::exceptions::PyValueError::new_err)?;
-    let on_roll = pos.get_turn();
     Ok(py.allow_threads(move || ANALYZER.with(|a| {
         let a = a.borrow();
-        (a.equity(&pos, on_roll, max_depth), a.outcome_for_turn(&pos, max_depth).to_vec())
+        let value = a.value(&pos, max_depth);
+        (value.equity, value.outcome.iter().map(|&x| x as f64).collect())
     })))
+}
+
+#[cfg(feature = "extension-module")]
+/// Games `first..first + games` of a cubeless rollout of the position, from the side to move's
+/// point of view: the points it won in each game (±1, ±2, ±3), both sides playing the engine's
+/// move at `max_depth` roll levels. The first two rolls rotate through the 1296 combinations
+/// (see `RustAnalyzer::rollout_game`); the games run on the engine's threads.
+#[pyfunction]
+#[pyo3(signature = (me_checkers, opp_checkers, turn, cube_value, cube_owner, first, games, seed, max_depth))]
+#[allow(clippy::too_many_arguments)]
+fn rollout(
+    py: Python<'_>,
+    me_checkers: Vec<u8>,
+    opp_checkers: Vec<u8>,
+    turn: u8,
+    cube_value: u32,
+    cube_owner: Option<u8>,
+    first: usize,
+    games: usize,
+    seed: u64,
+    max_depth: u32,
+) -> PyResult<Vec<i32>> {
+    let pos = build_position(me_checkers, opp_checkers, turn, cube_value, cube_owner)
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    Ok(py.allow_threads(move || ANALYZER.with(|a| a.borrow().rollout(&pos, first, games, seed, max_depth))))
+}
+
+/// Search only some moves deeper (the app's "search space", see `MoveFilter`): at every move
+/// decision of a search at least one roll level deep, the moves within `margin` equity of the best
+/// by their static (1-ply) equity, at most `max_moves` of them. `None` for both: every move. Per
+/// thread like the engine. Clears the cache.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+#[pyo3(signature = (margin, max_moves))]
+fn set_move_filter(margin: Option<f64>, max_moves: Option<usize>) {
+    let filter = if margin.is_none() && max_moves.is_none() {
+        None
+    } else {
+        Some(rust_analyzer::MoveFilter {
+            margin: margin.unwrap_or(f64::INFINITY),
+            max_moves: max_moves.unwrap_or(usize::MAX).max(1),
+        })
+    };
+    ANALYZER.with(|a| {
+        if a.borrow().move_filter() != filter {
+            a.borrow_mut().set_move_filter(filter);
+        }
+    });
 }
 
 #[cfg(feature = "extension-module")]
@@ -204,6 +253,18 @@ fn clear_cache() {
 #[pyfunction]
 fn set_cache_size(megabytes: usize) {
     ANALYZER.with(|a| a.borrow_mut().set_cache_mb(megabytes));
+}
+
+/// Search on `threads` threads (searches of at least one roll level, see
+/// `RustAnalyzer::set_threads`; 1, the default, only uses the calling thread). Per thread like the
+/// engine itself: call it on the thread that runs the engine. Returns the threads in use.
+#[cfg(feature = "extension-module")]
+#[pyfunction]
+fn set_threads(threads: usize) -> usize {
+    ANALYZER.with(|a| {
+        a.borrow_mut().set_threads(threads);
+        a.borrow().threads()
+    })
 }
 
 /// Memory reserved for the engine's cache on this thread, in MB (rounded to the nearest MB).
@@ -248,7 +309,7 @@ fn load_network(path: &str) -> PyResult<String> {
     }
     let net = eval_net::EvalNet::load(std::path::Path::new(path)).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let description = net.description();
-    ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(eval_net::EvalNetEvaluator { net })));
+    ANALYZER.with(|a| a.borrow_mut().set_evaluator(Box::new(eval_net::EvalNetEvaluator::new(net))));
     Ok(description)
 }
 
@@ -306,6 +367,7 @@ fn backgammon_rust(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(play_game, m)?)?;
     m.add_function(wrap_pyfunction!(set_cache_size, m)?)?;
     m.add_function(wrap_pyfunction!(cache_size_mb, m)?)?;
+    m.add_function(wrap_pyfunction!(set_threads, m)?)?;
     m.add_function(wrap_pyfunction!(load_network, m)?)?;
     m.add_function(wrap_pyfunction!(load_bearoff, m)?)?;
     m.add_function(wrap_pyfunction!(use_placeholder_evaluator, m)?)?;
@@ -313,6 +375,8 @@ fn backgammon_rust(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_money_scoring, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_moves, m)?)?;
     m.add_function(wrap_pyfunction!(analyze_position, m)?)?;
+    m.add_function(wrap_pyfunction!(rollout, m)?)?;
+    m.add_function(wrap_pyfunction!(set_move_filter, m)?)?;
     Ok(())
 }
 #[cfg(test)]

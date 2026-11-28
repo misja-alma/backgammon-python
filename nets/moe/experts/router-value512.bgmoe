@@ -1,0 +1,15 @@
+BGMOE 1
+mode router
+types types.txt
+expert holding-ahead holding-ahead-best.bgnet
+expert holding-behind holding-behind-best.bgnet
+expert blitz-attacker blitz-attacker-best.bgnet
+expert blitz-defender blitz-defender-best.bgnet
+expert prime-trapper prime-trapper-best.bgnet
+expert prime-trapped prime-trapped-best.bgnet
+expert contact-bearoff-ahead contact-bearoff-ahead-best.bgnet
+expert contact-bearoff-behind contact-bearoff-behind-best.bgnet
+expert back-game back-game-best.bgnet
+expert escaped-opponent escaped-opponent-best.bgnet
+expert late-hit late-hit-best.bgnet
+expert generic generic-value512.bgnet

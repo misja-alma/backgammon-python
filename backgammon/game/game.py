@@ -76,15 +76,36 @@ def player_name(player: Player) -> str:
     return "ME" if player == Player.ME else "OPPONENT"
 
 
-def format_move(move: Move) -> str:
-    """Format a move in standard notation, e.g. '8/5 6/5', 'bar/22', '3/off'."""
+def hits(before, move: Move) -> list[bool]:
+    """For each half-move of move (played in order from the position before, by the side on roll
+    there), whether it hits: lands on a point with a single opposing checker."""
+    mover = before.get_turn()
+    theirs = [before.get_checkers(mover.other_player(), p) for p in range(26)]
+    result = []
+    for _, target in move:
+        # The mover's point t is the opponent's point 25 - t.
+        hit = 1 <= target <= 24 and theirs[25 - target] == 1
+        if hit:
+            theirs[25 - target] = 0
+        result.append(hit)
+    return result
+
+
+def format_move(move: Move, before=None, highest_first: bool = False) -> str:
+    """Format a move in standard notation, e.g. '8/5 6/5', 'bar/22', '3/off'. With the position
+    before the move, half-moves that hit are marked with '*' ('18/13 8/4*'). highest_first: list
+    the half-moves from the highest starting point down (the usual order), else as played."""
     if not move:
         return "no legal move"
 
     def point(p: int) -> str:
         return "bar" if p == 25 else "off" if p == 0 else str(p)
 
-    return " ".join(f"{point(start)}/{point(target)}" for start, target in move)
+    marks = hits(before, move) if before is not None else [False] * len(move)
+    halves = list(zip(move, marks))
+    if highest_first:
+        halves.sort(key=lambda h: (-h[0][0], -h[0][1]))
+    return " ".join(f"{point(start)}/{point(target)}{'*' if hit else ''}" for (start, target), hit in halves)
 
 
 class Game:
@@ -194,13 +215,14 @@ class Game:
             raise ValueError(f"Illegal move {format_move(move)} with {self.dice}")
 
         mover = self.current_player
+        notation = format_move(move, self.position)
         self.turns += 1
         if move:
             self.position = Utils.apply_move(self.position, move)
         else:
             self.position = copy.deepcopy(self.position)
             self.position.switch_turn()
-        self.log(f"{player_name(mover)} rolls {self.dice[0]}-{self.dice[1]}: {format_move(move)}")
+        self.log(f"{player_name(mover)} rolls {self.dice[0]}-{self.dice[1]}: {notation}")
 
         if self.position.get_checkers(mover, 0) == CHECKERS_PER_PLAYER:
             self._set_winner(mover)

@@ -577,3 +577,93 @@ Offline TD(λ) is at least as good: the standard from now on (SGD; Adam stays on
 moves with the f16 copy (`train --search f16`, money nets) doubles the speed again (4964 games/s)
 but trails by 0.06 both times: not used. The f32 forward pass is limited by its weight loads (the
 f16 copy is 2.5x faster per evaluation); the move choice is now ~80% of the training time.
+
+## Incremental first layer (2026-11-27)
+
+The positions after the legal moves of one position differ from that position (seen by the
+opponent, who is on roll in all of them) in ~10.4 of the 256 inputs, against ~43 non-zero inputs.
+So the first layer's sums of the position before the move are computed once, and each candidate
+adds only the rows of its differing inputs, times the difference (`NeuralNet::layer1_base`,
+`forward_all_incremental`; for the f16 evaluation copy `EvalNet::forward_all_incremental`).
+Equal to a full evaluation up to rounding (unit tests).
+
+- Training (move choice, f32): 512-256 money, one thread 290 -> 413 games/s; 12 threads 2497 ->
+  3811 games/s (8.1x the 471 of the start of the day); DMP 512-256 1999 -> 2709. Also in the
+  MoE expert trainer.
+- Engine (the search's last level, `Evaluator::evaluate_child_scored`, f16 nets): best move at 1
+  roll level 7.9 -> 5.6 ms (1.39x), at 2 levels 1.46x (`search_benchmark`). The incremental values
+  only choose the move at the last level; the chosen position is then evaluated in full, so the
+  search's values are those of full evaluations (only near-ties can go the other way: 0 of 200
+  moves at 1 level, largest equity difference 0.00008).
+
+## Further inference speed: tried, not kept (2026-11-27)
+
+Engine search profile (`search_benchmark`, money f16 net, best move at 1 roll level): 7244
+evaluations per move, 98% of the time in the net (~740 ns per incremental evaluation), the rest of
+the search 16 ns per evaluation.
+
+- Batched evaluation of sibling candidates (layer 2 for groups of 2-8 children together, each
+  weight row loaded once for the union of their active units; bit-identical): siblings do share
+  most units (85 active per child, 115 for 4 together, 129 for all ~20), but it was slower: 863
+  ns per evaluation for groups of 4 (8: 1489, registers spill; 2: 984) against 738. The f16 kernel
+  is limited by load/FMA throughput, not by memory (one 8-lane load feeds one 8-lane FMA), so
+  saving loads doesn't help while the union costs ~35% multiply-adds by zero. The same arithmetic
+  holds for f32. Collecting the children as a list also tripled the rest of the search.
+- int8 layers (existing `Kind::I8`, `eval_precision`, money 512-256): [f16 i8] 1523 ns per
+  evaluation against 987 for [f16 f16], and 5.4% other moves than f32 (loss 0.126 millipoints per
+  decision; f16: 0.55%, no measurable loss). Not worth it without quantization-aware training.
+- NEON intrinsics for the f32 sparse layer (16 accumulators, no bounds checks): no change (2741 vs
+  2724 ns per evaluation; training 405 vs 413 games/s): the compiler's code was already the same
+  loads and FMAs, limited by load throughput.
+
+## f16 evaluation: memory, prefetching, output layer, encoding (2026-11-27)
+
+Stage profile of an incremental evaluation as the search makes it (`incremental_profile`, money
+512-256 f16, 24892 candidates of 1382 positions), ns per candidate, before -> after:
+
+    whole evaluator call            659 -> 557
+    layer 2                         287 (273 with its weight rows already in L1; 323 with prefetching)
+    layer 1 (incremental)           129
+    output layer + sigmoids         135 -> 29   (rows of 8 per input, two vector FMAs per active unit)
+    parent's base per candidate      63 -> 22   (16 registers instead of 1)
+    encoding + differing inputs      68 -> 45   (from the points whose checker counts differ:
+                                                `Encoding::encode_diff`, exact, reused buffers)
+
+Layer 2 waits for memory only 5% of its time, and prefetching the next rows makes it slower: the
+kernels are at the instruction-throughput limit, so assembly wouldn't help either. Packing the
+non-zero outputs (push_nonzero): a table for the bit counts helped a little (576 -> 568); reducing
+the lane masks of 4 registers together was slower (layer 1 128 -> 142), not kept.
+
+Search (`search_benchmark`, best move at 1 roll level): money 7.75 ms (full evaluations, before
+today) -> 4.59 ms (1.7x); 2 roll levels 3.28 s -> 1.95 s; DMP 7.6 -> 5.2 ms. The results are
+unchanged (the incremental values only choose the move at the last level; 0 other moves).
+
+## Multi-threaded engine search (2026-11-27)
+
+`RustAnalyzer::set_threads(n)`: searches of at least one roll level run on n threads. Worker
+analyzers (own copy of the evaluator via `Evaluator::fork`, own move generator) share the cache (now
+a `SharedTable`: 64 shards behind their own locks) and the bearoff database. `best_move` hands out
+(candidate, roll) pairs, `equity`/`outcome_for_turn` the 21 rolls, `analyze_moves` the candidates;
+the results are combined in the serial order, so they are exactly those of one thread (unit test,
+and `search_benchmark` checks every move). The app uses `Settings.rust_threads` (0: one per core);
+the strength benchmark's worker processes stay at one thread each.
+
+Best move, money 512-256 f16 (`search_benchmark ... 1,4,8,10,12,14`, M4 Pro, 10 performance + 4
+efficiency cores):
+
+    threads          1      4      8     10     14
+    1 roll level  4.63   1.31   0.77   0.67   0.65 ms   (6.9x at 10)
+    2 roll levels 1948      -      -    229    218 ms   (8.5x at 10, 8.9x at 14)
+
+Through the Python binding (analyze_moves at 2 levels + analyze_position at 2 levels, opening
+position, 3-1): 2.81 s -> 0.39 s with 10 threads, identical results.
+
+## MoE experts: measuring by the candidates' game type (2026-11-27)
+
+The first money expert (holding-ahead, 256-128) seemed to get worse on its own type (9.46 ->
+11.48, then 10.07), but it was measured on the wrong decisions: the measuring set groups decisions
+by the position before the move, while the net evaluates the positions after the moves, with the
+opponent on roll, which are mostly of the mirror type (holding-behind). On the holding-behind group
+the expert had improved (5.73 -> 5.12). `decision_benchmark --candidate-types` now counts a decision
+for a type when most of its candidates are of that type, and moe_schedule measures the experts that
+way: holding-ahead base 6.10 -> 4.76 after one 2M segment at alpha 0.005 (value net 512-256: 4.55).

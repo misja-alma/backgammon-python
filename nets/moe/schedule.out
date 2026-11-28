@@ -1,0 +1,135 @@
+--- base net: 256-128-a0025-32M.bgnet (decision loss of its average 5.190), copied to /Users/misja/PycharmProjects/backgammon-python/nets/moe/base.bgnet; value net 512-256-a0025-52M-avg.bgnet, copied to /Users/misja/PycharmProjects/backgammon-python/nets/moe/value.bgnet
+--- mixture of money experts from base.bgnet (decision loss 5.512 millipoints: atta 5.071 prim 6.110 anch 5.119 raci 6.043); 12 experts; base net on the measuring set (bgsage 3-ply money, loss 6.442): holding-ahead 9.463 (n=1000), holding-behind 5.732 (n=1000), blitz-attacker 7.735 (n=1000), blitz-defender 5.985 (n=1000), prime-trapper 7.831 (n=1000), prime-trapped 7.070 (n=1000), contact-bearoff-ahead 4.303 (n=1000), contact-bearoff-behind 6.266 (n=1000), back-game 5.477 (n=1000), escaped-opponent 6.425 (n=1000), late-hit 5.284 (n=1000), generic 5.736 (n=1000)
+    value net: decision loss 4.048, measuring set 4.314: holding-ahead 6.070, holding-behind 4.246, blitz-attacker 4.778, blitz-defender 4.655, prime-trapper 4.883, prime-trapped 5.796, contact-bearoff-ahead 2.557, contact-bearoff-behind 4.766, back-game 3.389, escaped-opponent 4.030, late-hit 2.876, generic 3.727
+--- stage 1, collected: 249346 games of 256-512-256-1 td-nack-v1 dmp, 52000000 games (reference net), 114 s; holding-ahead 1000000, holding-behind 1000000, blitz-attacker 1000000, blitz-defender 1000000, prime-trapper 1000000, prime-trapped 1000000, contact-bearoff-ahead 1000000, contact-bearoff-behind 1000000, back-game 1000000, escaped-opponent 1000000, late-hit 1000000, generic 1000000
+--- stage 2, expert holding-ahead: 1000 decisions of its type in the measuring set, base net loss 9.463
+holding-ahead alpha 0.005 2M: own type loss 11.478 (n=1000, base 9.463, best 9.463)   all decisions 6.052 (atta 5.626 prim 6.799 anch 5.312 raci 6.803)   23% of moves on its type   -> phase done
+holding-ahead alpha 0.0025 2M: own type loss 10.069 (n=1000, base 9.463, best 9.463)   all decisions 5.780 (atta 5.445 prim 6.354 anch 5.051 raci 6.537)   23% of moves on its type
+--- mixture of money experts from base.bgnet (decision loss 5.512 millipoints: atta 5.071 prim 6.110 anch 5.119 raci 6.043); 12 experts; base net on the measuring set (bgsage 3-ply money, loss 6.442): holding-ahead 6.097 (n=2367), holding-behind 7.373 (n=856), blitz-attacker 6.302 (n=1436), blitz-defender 6.608 (n=1359), prime-trapper 5.201 (n=1969), prime-trapped 7.335 (n=795), contact-bearoff-ahead 6.493 (n=1484), contact-bearoff-behind 3.806 (n=1412), back-game 6.535 (n=1636), escaped-opponent 5.299 (n=688), late-hit 6.422 (n=1347), generic 6.679 (n=3077)
+    value net: decision loss 4.048, measuring set 4.314: holding-ahead 4.552, holding-behind 4.064, blitz-attacker 4.767, blitz-defender 4.568, prime-trapper 4.395, prime-trapped 5.410, contact-bearoff-ahead 4.465, contact-bearoff-behind 2.139, back-game 4.108, escaped-opponent 2.898, late-hit 4.347, generic 4.300
+--- stage 2, expert holding-ahead: 2367 decisions of its type in the measuring set, base net loss 6.097
+holding-ahead alpha 0.005 2M: own type loss 4.759 (n=2367, base 6.097, best 4.759)   all decisions 6.052 (atta 5.626 prim 6.799 anch 5.312 raci 6.803)   23% of moves on its type
+holding-ahead alpha 0.005 4M: own type loss 4.422 (n=2367, base 6.097, best 4.422)   all decisions 6.591 (atta 6.232 prim 7.552 anch 5.852 raci 7.081)   23% of moves on its type
+holding-ahead alpha 0.005 6M: own type loss 4.440 (n=2367, base 6.097, best 4.422)   all decisions 7.025 (atta 6.727 prim 7.696 anch 6.122 raci 7.837)   23% of moves on its type   -> phase done
+holding-ahead alpha 0.0025 6M: own type loss 4.379 (n=2367, base 6.097, best 4.379)   all decisions 6.716 (atta 6.493 prim 7.597 anch 5.730 raci 7.346)   23% of moves on its type
+holding-ahead alpha 0.0025 8M: own type loss 4.240 (n=2367, base 6.097, best 4.240)   all decisions 6.799 (atta 6.358 prim 7.750 anch 5.869 raci 7.608)   23% of moves on its type
+holding-ahead alpha 0.0025 10M: own type loss 4.438 (n=2367, base 6.097, best 4.240)   all decisions 6.908 (atta 6.528 prim 7.717 anch 5.954 raci 7.776)   23% of moves on its type
+holding-ahead alpha 0.0025 12M: own type loss 4.293 (n=2367, base 6.097, best 4.240)   all decisions 7.152 (atta 6.946 prim 8.025 anch 6.001 raci 7.939)   23% of moves on its type   -> phase done
+--- expert holding-ahead done: holding-ahead-a0025-8M-avg.bgnet, own type loss 4.240 (base 6.097)
+--- stage 2, expert holding-behind: 856 decisions of its type in the measuring set, base net loss 7.373
+holding-behind alpha 0.005 2M: own type loss 4.981 (n=856, base 7.373, best 4.981)   all decisions 6.233 (atta 5.892 prim 6.705 anch 6.013 raci 6.546)   28% of moves on its type
+holding-behind alpha 0.005 4M: own type loss 4.902 (n=856, base 7.373, best 4.902)   all decisions 6.553 (atta 6.423 prim 6.765 anch 6.485 raci 6.630)   28% of moves on its type   -> phase done
+holding-behind alpha 0.0025 6M: own type loss 4.533 (n=856, base 7.373, best 4.533)   all decisions 6.666 (atta 6.504 prim 7.230 anch 6.444 raci 6.666)   28% of moves on its type
+holding-behind alpha 0.0025 8M: own type loss 4.322 (n=856, base 7.373, best 4.322)   all decisions 6.806 (atta 6.619 prim 7.144 anch 6.524 raci 7.082)   28% of moves on its type
+holding-behind alpha 0.0025 10M: own type loss 4.176 (n=856, base 7.373, best 4.176)   all decisions 6.846 (atta 6.788 prim 7.428 anch 6.506 raci 6.817)   28% of moves on its type
+holding-behind alpha 0.0025 12M: own type loss 4.124 (n=856, base 7.373, best 4.124)   all decisions 6.858 (atta 6.718 prim 6.898 anch 6.777 raci 7.099)   28% of moves on its type
+holding-behind alpha 0.0025 14M: own type loss 4.295 (n=856, base 7.373, best 4.124)   all decisions 6.976 (atta 6.717 prim 7.336 anch 6.886 raci 7.129)   28% of moves on its type   -> phase done
+--- expert holding-behind done: holding-behind-a0025-12M-avg.bgnet, own type loss 4.124 (base 7.373)
+--- stage 2, expert blitz-attacker: 1436 decisions of its type in the measuring set, base net loss 6.302
+blitz-attacker alpha 0.005 2M: own type loss 6.044 (n=1436, base 6.302, best 6.044)   all decisions 6.168 (atta 6.138 prim 6.452 anch 5.654 raci 6.520)   21% of moves on its type
+blitz-attacker alpha 0.005 4M: own type loss 5.855 (n=1436, base 6.302, best 5.855)   all decisions 6.699 (atta 6.507 prim 7.288 anch 6.301 raci 6.902)   21% of moves on its type
+blitz-attacker alpha 0.005 6M: own type loss 5.825 (n=1436, base 6.302, best 5.825)   all decisions 7.237 (atta 7.516 prim 7.611 anch 6.555 raci 7.278)   21% of moves on its type   -> phase done
+blitz-attacker alpha 0.0025 8M: own type loss 5.672 (n=1436, base 6.302, best 5.672)   all decisions 7.385 (atta 7.754 prim 7.836 anch 6.677 raci 7.268)   21% of moves on its type
+blitz-attacker alpha 0.0025 10M: own type loss 5.567 (n=1436, base 6.302, best 5.567)   all decisions 7.676 (atta 8.110 prim 8.077 anch 6.666 raci 7.832)   21% of moves on its type
+blitz-attacker alpha 0.0025 12M: own type loss 5.085 (n=1436, base 6.302, best 5.085)   all decisions 7.517 (atta 7.914 prim 8.092 anch 6.582 raci 7.502)   21% of moves on its type
+blitz-attacker alpha 0.0025 14M: own type loss 5.583 (n=1436, base 6.302, best 5.085)   all decisions 7.702 (atta 8.198 prim 8.152 anch 6.808 raci 7.611)   21% of moves on its type
+blitz-attacker alpha 0.0025 16M: own type loss 5.175 (n=1436, base 6.302, best 5.085)   all decisions 7.773 (atta 8.241 prim 8.232 anch 6.986 raci 7.599)   21% of moves on its type   -> phase done
+--- expert blitz-attacker done: blitz-attacker-a0025-12M-avg.bgnet, own type loss 5.085 (base 6.302)
+--- stage 2, expert blitz-defender: 1359 decisions of its type in the measuring set, base net loss 6.608
+blitz-defender alpha 0.005 2M: own type loss 5.673 (n=1359, base 6.608, best 5.673)   all decisions 6.245 (atta 6.222 prim 6.441 anch 5.992 raci 6.387)   23% of moves on its type
+blitz-defender alpha 0.005 4M: own type loss 5.280 (n=1359, base 6.608, best 5.280)   all decisions 6.595 (atta 6.530 prim 7.101 anch 6.148 raci 6.747)   23% of moves on its type
+blitz-defender alpha 0.005 6M: own type loss 4.662 (n=1359, base 6.608, best 4.662)   all decisions 7.050 (atta 6.868 prim 7.813 anch 6.711 raci 7.040)   23% of moves on its type
+blitz-defender alpha 0.005 8M: own type loss 4.689 (n=1359, base 6.608, best 4.662)   all decisions 7.331 (atta 6.926 prim 8.014 anch 6.969 raci 7.710)   23% of moves on its type   -> phase done
+blitz-defender alpha 0.0025 8M: own type loss 4.836 (n=1359, base 6.608, best 4.662)   all decisions 6.961 (atta 6.863 prim 7.558 anch 6.616 raci 6.978)   23% of moves on its type
+blitz-defender alpha 0.0025 10M: own type loss 4.736 (n=1359, base 6.608, best 4.662)   all decisions 7.101 (atta 6.891 prim 7.578 anch 6.830 raci 7.288)   23% of moves on its type   -> phase done
+--- expert blitz-defender done: blitz-defender-a005-6M-avg.bgnet, own type loss 4.662 (base 6.608)
+--- stage 2, expert prime-trapper: 1969 decisions of its type in the measuring set, base net loss 5.201
+prime-trapper alpha 0.005 2M: own type loss 4.707 (n=1969, base 5.201, best 4.707)   all decisions 6.145 (atta 5.942 prim 6.643 anch 5.715 raci 6.472)   24% of moves on its type
+prime-trapper alpha 0.005 4M: own type loss 4.706 (n=1969, base 5.201, best 4.706)   all decisions 6.719 (atta 6.717 prim 7.234 anch 6.166 raci 6.889)   24% of moves on its type   -> phase done
+prime-trapper alpha 0.0025 6M: own type loss 4.628 (n=1969, base 5.201, best 4.628)   all decisions 6.698 (atta 6.731 prim 7.199 anch 6.191 raci 6.785)   24% of moves on its type
+prime-trapper alpha 0.0025 8M: own type loss 4.526 (n=1969, base 5.201, best 4.526)   all decisions 6.883 (atta 6.901 prim 7.578 anch 6.310 raci 6.906)   24% of moves on its type
+prime-trapper alpha 0.0025 10M: own type loss 4.646 (n=1969, base 5.201, best 4.526)   all decisions 7.019 (atta 7.002 prim 7.844 anch 6.351 raci 7.084)   24% of moves on its type
+prime-trapper alpha 0.0025 12M: own type loss 4.788 (n=1969, base 5.201, best 4.526)   all decisions 7.086 (atta 7.119 prim 7.846 anch 6.528 raci 7.019)   24% of moves on its type   -> phase done
+--- expert prime-trapper done: prime-trapper-a0025-8M-avg.bgnet, own type loss 4.526 (base 5.201)
+--- stage 2, expert prime-trapped: 795 decisions of its type in the measuring set, base net loss 7.335
+prime-trapped alpha 0.005 2M: own type loss 6.063 (n=795, base 7.335, best 6.063)   all decisions 6.149 (atta 5.897 prim 6.734 anch 6.111 raci 6.063)   23% of moves on its type
+prime-trapped alpha 0.005 4M: own type loss 4.859 (n=795, base 7.335, best 4.859)   all decisions 6.585 (atta 6.199 prim 7.337 anch 6.606 raci 6.480)   23% of moves on its type
+prime-trapped alpha 0.005 6M: own type loss 4.818 (n=795, base 7.335, best 4.818)   all decisions 6.876 (atta 6.351 prim 7.023 anch 7.205 raci 7.122)   23% of moves on its type   -> phase done
+prime-trapped alpha 0.0025 8M: own type loss 5.122 (n=795, base 7.335, best 4.818)   all decisions 6.828 (atta 6.281 prim 7.047 anch 7.048 raci 7.161)   23% of moves on its type
+prime-trapped alpha 0.0025 10M: own type loss 4.982 (n=795, base 7.335, best 4.818)   all decisions 7.037 (atta 6.522 prim 7.540 anch 7.253 raci 7.103)   23% of moves on its type   -> phase done
+--- expert prime-trapped done: prime-trapped-a005-6M-avg.bgnet, own type loss 4.818 (base 7.335)
+--- stage 2, expert contact-bearoff-ahead: 1484 decisions of its type in the measuring set, base net loss 6.493
+contact-bearoff-ahead alpha 0.005 2M: own type loss 5.508 (n=1484, base 6.493, best 5.508)   all decisions 6.539 (atta 6.377 prim 7.585 anch 6.113 raci 6.367)   25% of moves on its type
+contact-bearoff-ahead alpha 0.005 4M: own type loss 5.304 (n=1484, base 6.493, best 5.304)   all decisions 7.347 (atta 7.214 prim 8.939 anch 6.713 raci 6.918)   25% of moves on its type
+contact-bearoff-ahead alpha 0.005 6M: own type loss 5.242 (n=1484, base 6.493, best 5.242)   all decisions 8.023 (atta 8.376 prim 9.413 anch 7.292 raci 7.204)   25% of moves on its type   -> phase done
+contact-bearoff-ahead alpha 0.0025 8M: own type loss 4.931 (n=1484, base 6.493, best 4.931)   all decisions 8.152 (atta 8.544 prim 9.509 anch 7.235 raci 7.497)   25% of moves on its type
+contact-bearoff-ahead alpha 0.0025 10M: own type loss 4.866 (n=1484, base 6.493, best 4.866)   all decisions 8.387 (atta 8.855 prim 9.714 anch 7.500 raci 7.625)   25% of moves on its type
+contact-bearoff-ahead alpha 0.0025 12M: own type loss 4.813 (n=1484, base 6.493, best 4.813)   all decisions 8.439 (atta 8.789 prim 9.861 anch 7.438 raci 7.879)   25% of moves on its type   -> phase done
+--- expert contact-bearoff-ahead done: contact-bearoff-ahead-a0025-12M-avg.bgnet, own type loss 4.813 (base 6.493)
+--- stage 2, expert contact-bearoff-behind: 1412 decisions of its type in the measuring set, base net loss 3.806
+contact-bearoff-behind alpha 0.005 2M: own type loss 2.794 (n=1412, base 3.806, best 2.794)   all decisions 7.002 (atta 6.713 prim 8.360 anch 6.304 raci 7.037)   27% of moves on its type
+contact-bearoff-behind alpha 0.005 4M: own type loss 2.933 (n=1412, base 3.806, best 2.794)   all decisions 8.049 (atta 8.037 prim 9.456 anch 7.511 raci 7.503)   27% of moves on its type   -> phase done
+contact-bearoff-behind alpha 0.0025 4M: own type loss 2.486 (n=1412, base 3.806, best 2.486)   all decisions 7.417 (atta 7.051 prim 8.801 anch 7.036 raci 7.203)   27% of moves on its type
+contact-bearoff-behind alpha 0.0025 6M: own type loss 2.730 (n=1412, base 3.806, best 2.486)   all decisions 7.542 (atta 7.348 prim 8.874 anch 6.942 raci 7.367)   27% of moves on its type
+contact-bearoff-behind alpha 0.0025 8M: own type loss 2.747 (n=1412, base 3.806, best 2.486)   all decisions 8.029 (atta 8.080 prim 9.388 anch 7.389 raci 7.544)   27% of moves on its type   -> phase done
+--- expert contact-bearoff-behind done: contact-bearoff-behind-a0025-4M-avg.bgnet, own type loss 2.486 (base 3.806)
+--- stage 2, expert back-game: 1636 decisions of its type in the measuring set, base net loss 6.535
+back-game alpha 0.005 2M: own type loss 5.470 (n=1636, base 6.535, best 5.470)   all decisions 6.155 (atta 6.151 prim 6.226 anch 6.062 raci 6.200)   25% of moves on its type
+back-game alpha 0.005 4M: own type loss 5.230 (n=1636, base 6.535, best 5.230)   all decisions 6.488 (atta 6.393 prim 7.042 anch 6.195 raci 6.480)   25% of moves on its type
+back-game alpha 0.005 6M: own type loss 4.822 (n=1636, base 6.535, best 4.822)   all decisions 6.686 (atta 6.349 prim 7.377 anch 6.446 raci 6.841)   25% of moves on its type
+back-game alpha 0.005 8M: own type loss 4.937 (n=1636, base 6.535, best 4.822)   all decisions 6.887 (atta 6.639 prim 7.027 anch 6.977 raci 7.013)   25% of moves on its type   -> phase done
+back-game alpha 0.0025 8M: own type loss 5.023 (n=1636, base 6.535, best 4.822)   all decisions 6.658 (atta 6.440 prim 7.292 anch 6.413 raci 6.700)   25% of moves on its type
+back-game alpha 0.0025 10M: own type loss 4.823 (n=1636, base 6.535, best 4.822)   all decisions 6.781 (atta 6.460 prim 7.344 anch 6.656 raci 6.894)   25% of moves on its type   -> phase done
+--- expert back-game done: back-game-a005-6M-avg.bgnet, own type loss 4.822 (base 6.535)
+--- stage 2, expert escaped-opponent: 688 decisions of its type in the measuring set, base net loss 5.299
+escaped-opponent alpha 0.005 2M: own type loss 4.354 (n=688, base 5.299, best 4.354)   all decisions 6.205 (atta 5.475 prim 6.620 anch 6.160 raci 6.906)   22% of moves on its type
+escaped-opponent alpha 0.005 4M: own type loss 3.494 (n=688, base 5.299, best 3.494)   all decisions 6.446 (atta 5.720 prim 7.119 anch 6.511 raci 6.818)   23% of moves on its type
+escaped-opponent alpha 0.005 6M: own type loss 3.902 (n=688, base 5.299, best 3.494)   all decisions 6.596 (atta 5.889 prim 6.997 anch 6.985 raci 6.819)   23% of moves on its type   -> phase done
+escaped-opponent alpha 0.0025 6M: own type loss 3.961 (n=688, base 5.299, best 3.494)   all decisions 6.341 (atta 5.672 prim 6.783 anch 6.622 raci 6.593)   23% of moves on its type
+escaped-opponent alpha 0.0025 8M: own type loss 3.583 (n=688, base 5.299, best 3.494)   all decisions 6.598 (atta 5.744 prim 6.794 anch 7.193 raci 6.970)   23% of moves on its type   -> phase done
+--- expert escaped-opponent done: escaped-opponent-a005-4M-avg.bgnet, own type loss 3.494 (base 5.299)
+--- stage 2, expert late-hit: 1347 decisions of its type in the measuring set, base net loss 6.422
+late-hit alpha 0.005 2M: own type loss 5.330 (n=1347, base 6.422, best 5.330)   all decisions 6.214 (atta 6.004 prim 6.807 anch 5.794 raci 6.463)   30% of moves on its type
+late-hit alpha 0.005 4M: own type loss 4.729 (n=1347, base 6.422, best 4.729)   all decisions 6.869 (atta 7.073 prim 7.333 anch 5.953 raci 7.183)   30% of moves on its type
+late-hit alpha 0.005 6M: own type loss 4.608 (n=1347, base 6.422, best 4.608)   all decisions 7.509 (atta 7.966 prim 7.950 anch 6.633 raci 7.461)   30% of moves on its type
+late-hit alpha 0.005 8M: own type loss 4.205 (n=1347, base 6.422, best 4.205)   all decisions 8.013 (atta 8.942 prim 8.213 anch 7.236 raci 7.414)   30% of moves on its type
+late-hit alpha 0.005 10M: own type loss 4.207 (n=1347, base 6.422, best 4.205)   all decisions 8.152 (atta 9.322 prim 8.334 anch 6.761 raci 7.890)   30% of moves on its type   -> phase done
+late-hit alpha 0.0025 10M: own type loss 4.105 (n=1347, base 6.422, best 4.105)   all decisions 7.960 (atta 8.687 prim 8.090 anch 7.200 raci 7.672)   30% of moves on its type
+late-hit alpha 0.0025 12M: own type loss 4.205 (n=1347, base 6.422, best 4.105)   all decisions 7.970 (atta 8.894 prim 7.981 anch 6.871 raci 7.867)   30% of moves on its type
+late-hit alpha 0.0025 14M: own type loss 4.027 (n=1347, base 6.422, best 4.027)   all decisions 7.918 (atta 8.665 prim 8.089 anch 6.991 raci 7.748)   30% of moves on its type   -> phase done
+--- expert late-hit done: late-hit-a0025-14M-avg.bgnet, own type loss 4.027 (base 6.422)
+--- stage 2, expert generic: 3077 decisions of its type in the measuring set, base net loss 6.679
+generic alpha 0.005 2M: own type loss 6.397 (n=3077, base 6.679, best 6.397)   all decisions 5.600 (atta 5.200 prim 6.251 anch 5.095 raci 6.150)   56% of moves on its type
+generic alpha 0.005 4M: own type loss 6.509 (n=3077, base 6.679, best 6.397)   all decisions 5.603 (atta 5.253 prim 6.003 anch 5.317 raci 6.055)   56% of moves on its type   -> phase done
+generic alpha 0.0025 4M: own type loss 6.566 (n=3077, base 6.679, best 6.397)   all decisions 5.511 (atta 5.146 prim 6.020 anch 5.110 raci 6.015)   56% of moves on its type
+generic alpha 0.0025 6M: own type loss 6.626 (n=3077, base 6.679, best 6.397)   all decisions 5.487 (atta 5.070 prim 6.008 anch 5.077 raci 6.062)   56% of moves on its type   -> phase done
+--- expert generic done: generic-a005-2M-avg.bgnet, own type loss 6.397 (base 6.679)
+--- stage 3, gateway (512 hidden), experts frozen:
+    held-out positions: 20000; mean |value - 1-ply lookahead| (hundredths of cubeless money equity):
+        value net                2.212
+        routed system (types)    2.237
+        gateway, ratings >= 0.25 2.546
+        gateway top 1            2.426
+        gateway top 2            2.425
+        gateway all (weighted)   2.545
+        best expert (oracle)     0.881
+        generic expert only      3.194
+    gateway with threshold 0.25: 6.74 experts per position on average
+    gateway's first choice is the best expert in 33% of positions; first choices: holding-ahead 5%, holding-behind 5%, blitz-attacker 4%, blitz-defender 4%, prime-trapper 4%, prime-trapped 5%, contact-bearoff-ahead 5%, contact-bearoff-behind 5%, back-game 2%, escaped-opponent 7%, late-hit 4%, generic 50%
+    per game type, on held-out positions of that type: value net / own expert / gateway (threshold 0.25)
+        holding-ahead              1165 positions  2.156 / 2.294 / 2.630
+        holding-behind             1148 positions  2.380 / 2.356 / 2.474
+        blitz-attacker             1453 positions  2.403 / 2.332 / 2.531
+        blitz-defender             1547 positions  2.272 / 2.402 / 2.557
+        prime-trapper              1373 positions  2.012 / 2.065 / 2.287
+        prime-trapped              1336 positions  1.915 / 1.987 / 2.056
+        contact-bearoff-ahead      1462 positions  2.300 / 2.338 / 2.493
+        contact-bearoff-behind     1523 positions  1.740 / 1.962 / 2.212
+        back-game                  1568 positions  2.007 / 2.167 / 2.112
+        escaped-opponent           1490 positions  2.023 / 2.029 / 2.276
+        late-hit                   1511 positions  2.612 / 2.719 / 2.899
+        generic                   11761 positions  2.085 / 2.132 / 2.460
+    wrote /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/gate.bggate, /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/moe.bgmoe, /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/router.bgmoe
+mixture (game types pick the experts): decisions best 69.46%  loss 8.077  atta 7.769 prim 7.838 anch 8.507 raci 8.230   [base 5.512, value net 4.048]; measuring set 16.081 [base 6.442, value net 4.314]: holding-ahead 18.295, holding-behind 11.452, blitz-attacker 20.882, blitz-defender 12.919, prime-trapper 18.573, prime-trapped 15.529, contact-bearoff-ahead 21.861, contact-bearoff-behind 13.828, back-game 13.174, escaped-opponent 11.503, late-hit 21.225, generic 16.406
+mixture (gateway, threshold 0.25): decisions best 70.27%  loss 7.740  atta 7.249 prim 7.319 anch 8.260 raci 8.195   [base 5.512, value net 4.048]; measuring set 15.010 [base 6.442, value net 4.314]: holding-ahead 14.635, holding-behind 11.631, blitz-attacker 18.264, blitz-defender 12.998, prime-trapper 14.086, prime-trapped 16.452, contact-bearoff-ahead 20.996, contact-bearoff-behind 13.070, back-game 13.289, escaped-opponent 11.217, late-hit 21.407, generic 15.825
+--- mixture of money experts with gateway: decision loss 7.740 (base 5.512, value net 4.048); games (ppg) bg -0.0326  nack -0.0161  mean -0.0243

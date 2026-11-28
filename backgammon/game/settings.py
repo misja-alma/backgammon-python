@@ -1,5 +1,12 @@
 from enum import Enum
+from pathlib import Path
 from typing import Optional
+
+
+APP_NAME = "Alma Gammon"
+
+# The app's folder in the home folder: the default place for saved and loaded positions.
+APP_FOLDER = Path.home() / "almagammon"
 
 
 class Analyzer(Enum):
@@ -17,10 +24,23 @@ class Analyzer(Enum):
 
 class Settings:
     analyzer: Analyzer = Analyzer.RUST
+    # Search depth of the Analyze menu in roll levels; the UI shows it in plies (depth + 1).
     analysis_depth: int = 2
+    # Search space of the Rust engine (gnubg's move filter): at every move decision of a search of
+    # 2-ply or more, only the moves within search_space_margin equity of the best by their 1-ply
+    # equity are searched deeper, at most search_space_moves of them. None: no limit (both None:
+    # every move, the full search). Set in Analyze > Settings. Default 0.16 / 10: on 1000 reference
+    # decisions at 3-ply as good as the full search (0.01 millipoints lost), 25x faster; see
+    # src/bin/search_space_benchmark.rs.
+    search_space_margin: Optional[float] = 0.16
+    search_space_moves: Optional[int] = 10
     # Memory for the Rust engine's cache (a fixed-size transposition table). More memory means
     # more cache hits in deep searches; 1 GB is as fast as an unbounded cache at depth 3.
     rust_cache_mb: int = 1024
+    # Threads for the Rust engine's searches of one roll level or more (the results are the same
+    # as with one thread; about 7x faster with 10) and for rollouts. 0 means one per CPU core.
+    # Set in Analyze > Settings.
+    rust_threads: int = 0
     # Neural net used as the Rust engine's evaluator (a weight file written by the Rust `train`
     # binary, or its half-precision evaluation copy from `make eval-net`, about 3x faster),
     # relative to the project root. None, or a missing file, means the placeholder

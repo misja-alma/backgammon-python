@@ -97,3 +97,41 @@ class AnalysisPanelTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class MarkedMovesTest(unittest.TestCase):
+    """Selecting several moves in the analysis panel (Shift- or Cmd-click) for a rollout."""
+
+    def setUp(self):
+        import pygame
+        from backgammon.ui.analysis_panel import AnalysisPanel
+        from backgammon.ui.board_map import BoardMap
+        from backgammon.game.move_analysis import Analysis, CandidateMove
+        pygame.init()
+        screen = pygame.display.set_mode((1024, 768))
+        self.panel = AnalysisPanel(screen, BoardMap(1024, 768))
+        position = Position()
+        position.setup_starting_position()
+        analysis = Analysis(position, (3, 1), 1, False)
+        analysis.moves = [CandidateMove(((8, 5), (6, 5)), position, -0.1 * i, [0.5] * 5) for i in range(5)]
+        self.panel.set_analysis(analysis)
+
+    def row(self, i):
+        p = self.panel
+        return p._rect().x + 10, p._rect().y + p._header_height() + i * p._row_height() + 5
+
+    def test_toggle_clicks_select_several_and_a_plain_click_one(self):
+        p = self.panel
+        self.assertEqual("select", p.handle_click(self.row(0)))
+        p.handle_click(self.row(3), toggle=True)
+        p.handle_click(self.row(1), toggle=True)
+        self.assertEqual([0, 3, 1], p.marked)
+        self.assertEqual(1, p.selected)                        # the last one is shown on the board
+        self.assertEqual([p.analysis.moves[i] for i in (0, 1, 3)], p.marked_moves())   # best first
+        p.handle_click(self.row(1), toggle=True)               # removed again
+        self.assertEqual([0, 3], p.marked)
+        self.assertEqual(3, p.selected)
+        # A click on the shown move while several are selected only selects it.
+        self.assertEqual("select", p.handle_click(self.row(3)))
+        self.assertEqual([3], p.marked)
+        self.assertEqual("play", p.handle_click(self.row(3)))

@@ -1,0 +1,6 @@
+expert late-hit (money): 1000000 start positions, net /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/late-hit.bgnet (36000000 games so far), off its type /Users/misja/PycharmProjects/backgammon-python/nets/moe/value.bgnet; alpha 0.005, lambda 0.7, 12 threads
+   500000 games ( 36500000 total)  7082 games/s  15.6 turns/game, 30% of the moves on its own type  saved
+  1000000 games ( 37000000 total)  7038 games/s  15.6 turns/game, 30% of the moves on its own type  saved
+  1500000 games ( 37500000 total)  7027 games/s  15.6 turns/game, 30% of the moves on its own type  saved
+  2000000 games ( 38000000 total)  7003 games/s  15.6 turns/game, 30% of the moves on its own type  saved
+average of the last 250000 games saved to /Users/misja/PycharmProjects/backgammon-python/nets/moe/experts/late-hit-avg.bgnet

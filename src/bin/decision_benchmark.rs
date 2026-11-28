@@ -10,6 +10,10 @@
 //! A NET may also be a mixture of experts (a .bgmoe manifest, see moe.rs). `--types FILE` (game
 //! types of a mixture, nets/moe/types.txt) adds the scores per game type: lines `type <name> ...`,
 //! each decision counted for the game types of its position (generic: races and no type).
+//! `--candidate-types FILE` instead counts a decision for a game type when most of its candidates
+//! (the positions after the moves, with the opponent on roll: what the net evaluates) are of that
+//! type: the decisions an expert of the type actually judges (the types come in mirror pairs, e.g.
+//! the candidates of a holding-ahead position are mostly holding-behind positions).
 //!
 //! For every decision (position, dice and the candidates bgsage evaluated at 3-ply or better,
 //! see benchmarks/extract_decisions.py) the net picks the candidate with the highest value for
@@ -34,7 +38,7 @@ use std::time::Instant;
 use backgammon_rust::eval_net::EvalNet;
 use backgammon_rust::moe::{experts_in, GameTypes, MoeNet};
 
-/// A net, or a mixture of experts (a .bgmoe manifest, see moe.rs; double match point only).
+/// A net, or a mixture of experts (a .bgmoe manifest, see moe.rs).
 enum Model {
     Net(EvalNet),
     Moe(MoeNet),
@@ -57,6 +61,12 @@ impl Model {
     fn equity(&self, p: &SimplePosition) -> f64 {
         match self {
             Model::Net(n) => n.equity(p),
+            // A money mixture: the money equity of its mixed outcome (until 2026-11-28 this was
+            // 2·win - 1 for every mixture, which ignored the gammons of money mixtures).
+            Model::Moe(m) if m.objective == backgammon_rust::neural_net::Objective::Money => {
+                backgammon_rust::evaluator::terminal_money_equity(p)
+                    .unwrap_or_else(|| backgammon_rust::evaluator::money_equity(&m.outcome(p)))
+            }
             Model::Moe(m) => 2.0 * m.win_probability(p) as f64 - 1.0,
         }
     }
@@ -215,9 +225,13 @@ fn main() {
     // counted for the types of its position (contact positions; races and positions of no type
     // count for generic).
     let mut game_types = None;
-    if let Some(i) = args.iter().position(|a| a == "--types") {
-        game_types = Some(GameTypes::load(Path::new(&args[i + 1])).unwrap_or_else(|e| panic!("{}", e)));
-        args.drain(i..i + 2);
+    let mut by_candidates = false;
+    for option in ["--types", "--candidate-types"] {
+        if let Some(i) = args.iter().position(|a| a == option) {
+            game_types = Some(GameTypes::load(Path::new(&args[i + 1])).unwrap_or_else(|e| panic!("{}", e)));
+            by_candidates = option == "--candidate-types";
+            args.drain(i..i + 2);
+        }
     }
     let unit = if scoring == Scoring::Money { 1000.0 } else { 100.0 };
     if args.is_empty() {
@@ -247,7 +261,16 @@ fn main() {
     let masks: Vec<u16> = match &game_types {
         Some(t) => {
             let mut acts = t.reference.new_activations();
-            decisions.iter().map(|d| t.classify(&d.position, &mut acts)).collect()
+            if by_candidates {
+                // The types most of the candidates have.
+                decisions.iter().map(|d| {
+                    let masks: Vec<u16> = d.candidates.iter().map(|c| t.classify(&c.position, &mut acts)).collect();
+                    (0..16).filter(|&b| 2 * masks.iter().filter(|&&m| m & (1 << b) != 0).count() > masks.len())
+                        .fold(0u16, |m, b| m | (1 << b))
+                }).collect()
+            } else {
+                decisions.iter().map(|d| t.classify(&d.position, &mut acts)).collect()
+            }
         }
         None => vec![0; decisions.len()],
     };

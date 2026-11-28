@@ -16,6 +16,7 @@ class BoardMap:
     HIGHLIGHT_OPPONENT = (255, 165, 0)
     MENU_BG = (240, 240, 240)
     MENU_HOVER = (200, 200, 255)
+    SELECTED = (0, 102, 204)
 
     # Checker display
     MAX_VISIBLE_CHECKERS = 5
